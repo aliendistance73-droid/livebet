@@ -1,0 +1,1271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1730">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="LiveBet">
+<title>Live Betting Dashboard</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+:root {
+  --bg: #0b1220; --panel: #121b2e; --panel2: #18243d; --line: #243355; --text: #e6edf7; --muted: #8fa0bf;
+  --green: #22c55e; --red: #ef4444; --amber: #f59e0b; --blue: #4f8cff;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-block: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); background: #0e1730; border-bottom: 1px solid var(--line); }
+.brand { font-weight: 700; letter-spacing: .2px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+.chip { padding: 2px 9px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); font-size: 12px; }
+.chip.live { color: var(--green); border-color: #1d6b3a; }
+.chip.demo { color: var(--amber); border-color: #7a5410; }
+.muted { color: var(--muted); }
+button { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; font: inherit; cursor: pointer; }
+button:hover { border-color: var(--blue); }
+main { padding-block: 12px 20px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); max-width: 1280px; margin: 0 auto; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
+h2 { font-size: 15px; margin: 0 0 8px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+.note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+#layout { display: grid; grid-template-columns: 340px 1fr; gap: 12px; align-items: start; }
+.picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
+.pick { background: var(--panel2); border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: 10px; padding: 9px 11px; cursor: pointer; }
+.pick.value { border-left-color: var(--green); }
+.pick .t { font-weight: 600; }
+.pick .m { font-size: 12px; color: var(--muted); }
+.pick .big { font-size: 17px; font-weight: 700; margin: 3px 0; }
+.tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); margin-left: 6px; vertical-align: middle; }
+.tag.high { color: var(--green); border-color: #1d6b3a; }
+.tag.mid { color: var(--amber); border-color: #7a5410; }
+.tag.low { color: var(--muted); }
+.match { display: flex; align-items: center; gap: 8px; padding: 8px 6px; border-bottom: 1px solid var(--line); cursor: pointer; border-radius: 8px; }
+.match:hover, .match.sel { background: var(--panel2); }
+.match .min { width: 38px; color: var(--green); font-weight: 600; font-size: 13px; }
+.match .names { flex: 1; min-width: 0; }
+.match .names div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.match .lg { color: var(--muted); font-size: 11px; }
+.match .sc { font-weight: 700; font-size: 16px; text-align: right; min-width: 38px; }
+.star { background: none; border: none; padding: 2px 4px; font-size: 18px; color: var(--muted); }
+.star.on { color: var(--amber); }
+.score { display: flex; justify-content: center; align-items: center; gap: 14px; margin: 4px 0 12px; font-size: 20px; font-weight: 700; flex-wrap: wrap; }
+.score .sc { font-size: 30px; }
+.score .min { color: var(--green); font-size: 14px; }
+.bars .row { display: grid; grid-template-columns: 44px 1fr 44px; gap: 8px; align-items: center; margin: 5px 0; font-size: 13px; }
+.bars .row .l { text-align: right; } .bars .row .r { text-align: left; }
+.bars .lab { grid-column: 1 / -1; text-align: center; color: var(--muted); font-size: 11px; margin-bottom: -3px; }
+.track { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--panel2); }
+.track i { display: block; height: 100%; }
+.track i.h { background: var(--blue); } .track i.a { background: var(--amber); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { padding: 6px 6px; text-align: right; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; }
+td input { width: 78px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; font: inherit; text-align: right; }
+.edge.pos { color: var(--green); font-weight: 700; } .edge.neg { color: var(--red); }
+tr.val { background: rgba(34, 197, 94, .09); }
+.events { font-size: 13px; color: var(--muted); }
+.events div { padding: 2px 0; }
+.sec { margin-top: 14px; }
+footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); max-width: 900px; margin: 0 auto; }
+#toasts { position: fixed; top: 64px; right: 10px; left: 10px; z-index: 20; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; }
+.toast { pointer-events: auto; background: #0f3d22; border: 1px solid #1d6b3a; padding: 10px 14px; border-radius: 10px; max-width: 420px; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
+dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 14px; width: min(440px, 94vw); }
+dialog::backdrop { background: rgba(0,0,0,.6); }
+dialog label { display: block; margin: 10px 0; font-size: 13px; color: var(--muted); }
+dialog label.inline { display: flex; gap: 8px; align-items: flex-start; color: var(--text); }
+dialog input[type=text], dialog input[type=password], dialog input[type=number], dialog select { width: 100%; margin-top: 4px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; }
+.row { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; } .row.end { justify-content: flex-end; }
+@media (max-width: 820px) {
+  #layout { grid-template-columns: 1fr; }
+  .picks { grid-template-columns: 1fr; }
+  td input { width: 64px; }
+  th, td { padding: 6px 3px; font-size: 13px; }
+  .brand { width: 100%; }
+}
+
+#tabs { display: flex; gap: 6px; padding-block: 8px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); background: var(--bg); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 4; }
+.tab { flex: 1; text-align: center; }
+.tab.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+.pos { color: var(--green); } .neg { color: var(--red); }
+.pm { border: 1px solid var(--line); border-radius: 12px; background: var(--panel2); padding: 10px 12px; margin-bottom: 10px; }
+.pm h3 { margin: 0 0 2px; font-size: 16px; }
+.pm .sub { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+.pm .txt { font-size: 13px; margin: 6px 0; }
+.pm table td input { width: 64px; }
+.pm .abs { font-size: 12px; color: var(--muted); }
+.verdict { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--line); }
+.verdict.v { color: var(--green); border-color: #1d6b3a; } .verdict.w { color: var(--amber); border-color: #7a5410; } .verdict.n { color: var(--muted); }
+.tri { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; background: var(--panel2); }
+.tri .legs { font-size: 13px; }
+.tri .m { color: var(--muted); font-size: 12px; margin-top: 3px; }
+.seg { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.seg button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+header { padding-top: max(10px, env(safe-area-inset-top, 0px)); }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">Live Betting Dashboard</div>
+  <div class="chips">
+    <span id="chipMode" class="chip">…</span>
+    <span id="chipQuota" class="chip" hidden></span>
+    <span id="chipUpdated" class="chip muted"></span>
+  </div>
+  <div class="actions">
+    <button id="btnRefresh" title="Refresh now">⟳</button>
+    <button id="btnSettings">Settings</button>
+  </div>
+</header>
+
+<div id="toasts"></div>
+
+<nav id="tabs" role="tablist">
+  <button class="tab on" data-tab="live" role="tab">Live</button>
+  <button class="tab" data-tab="pre" role="tab">Pre-match</button>
+</nav>
+
+<main>
+<div id="viewLive">
+  <section class="card" id="picksCard">
+    <h2>Best picks right now</h2>
+    <div id="picks" class="picks"><p class="muted">Loading…</p></div>
+    <p class="note">Picks come from the model, not from certainty. With your Betpanda odds typed in, a pick is a real <b>value</b> pick (edge = probability × odds − 1). Without odds it only shows the minimum odds worth taking.</p>
+  </section>
+
+  <div id="layout">
+    <aside class="card" id="listCard">
+      <h2>Live matches</h2>
+      <div id="list"></div>
+    </aside>
+    <section class="card" id="detail"><p class="muted">Select a match.</p></section>
+  </div>
+</div>
+
+<div id="viewPre" hidden>
+  <section class="card" id="preTop"></section>
+  <details class="card"><summary><h2 style="display:inline">Αναλύσεις αγώνων</h2></summary><div id="preMatches"></div></details>
+  <section class="card"><h2>Triples (3-leg parlays)</h2><div id="preTriples"></div></section>
+  <div id="preMethod" hidden></div>
+</div>
+</main>
+
+<footer>
+  Statistical estimates only — no guarantee of profit and not financial advice. Always check the real price on Betpanda before betting, and only stake what you can afford to lose.
+</footer>
+
+<dialog id="dlg">
+  <form method="dialog" id="settingsForm">
+    <h3>Settings</h3>
+    <label>API-Football key
+      <input id="keyInput" type="password" placeholder="paste key (saved on the computer only)" autocomplete="off">
+    </label>
+    <div class="row"><button type="button" id="btnSaveKey">Save key</button><button type="button" id="btnDemo">Toggle demo data</button></div>
+    <label>Refresh every
+      <select id="setInterval"><option value="20">20 s</option><option value="30">30 s</option><option value="45">45 s</option><option value="60">60 s</option><option value="120">2 min</option></select>
+    </label>
+    <label>Value alert threshold (edge %)
+      <input id="setThreshold" type="number" min="1" max="50" step="1">
+    </label>
+    <label class="inline"><input id="setScanAll" type="checkbox"> Analyse all live matches (max 8) — uses more API requests</label>
+    <label class="inline"><input id="setSaver" type="checkbox"> Data saver (recommended for the free API plan): list every 2 min, stats every 3 min, no event feed</label>
+    <label class="inline"><input id="setSound" type="checkbox"> Sound alert on value pick</label>
+    <div class="row"><button type="button" id="btnNotif">Enable browser notifications</button></div>
+    <div class="row end"><button value="close">Close</button></div>
+  </form>
+</dialog>
+
+<script>window.FORCE_DIRECT = true;</script>
+<script>
+/* In-play goals model. Works in the browser (window.Model) and in Node (require). */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.Model = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  const DEFAULTS = {
+    priorHome: 1.45, // expected goals per 90 min, home side (league-average prior)
+    priorAway: 1.15, // expected goals per 90 min, away side
+    priorWeightMin: 30, // how many minutes of "evidence" the prior is worth
+    trailBoost: 0.08, // rate boost per goal when trailing (max 2 goals counted)
+    leadDrop: 0.06, // rate drop per goal when leading (max 2 goals counted)
+    redOwn: 0.78, // own rate multiplier per red card
+    redOpp: 1.2, // opponent rate multiplier per red card
+    secondHalfBoost: 1.08, // goals come slightly faster late in matches
+    priorCorners90: 10.2, // league-average total corners per 90 min
+    cornerPriorWeightMin: 25, // minutes of evidence the corner prior is worth
+    firstHalfFactor: 0.93, // goals come slightly slower in the first half
+    firstHalfStoppage: 2, // typical first-half stoppage minutes
+  };
+
+  function poissonTail(lambda, k) {
+    // P(N >= k), N ~ Poisson(lambda)
+    if (k <= 0) return 1;
+    if (lambda <= 0) return 0;
+    let term = Math.exp(-lambda);
+    let sum = 0;
+    for (let i = 0; i < k; i++) {
+      sum += term;
+      term *= lambda / (i + 1);
+    }
+    return Math.min(1, Math.max(0, 1 - sum));
+  }
+
+  function num(v) {
+    if (v == null) return 0;
+    if (typeof v === 'string') return parseFloat(v) || 0;
+    return v;
+  }
+
+  // raw = one element of API-Football /fixtures/statistics response
+  function teamStats(raw) {
+    if (!raw) return null;
+    const m = {};
+    for (const s of raw.statistics || []) m[s.type] = s.value;
+    const sot = num(m['Shots on Goal']);
+    const shots = num(m['Total Shots']);
+    const corners = num(m['Corner Kicks']);
+    const hasXg = m['expected_goals'] != null;
+    const xgEst = 0.11 * sot + 0.04 * Math.max(0, shots - sot) + 0.015 * corners;
+    return {
+      sot,
+      shots,
+      corners,
+      poss: num(m['Ball Possession']),
+      yellow: num(m['Yellow Cards']),
+      red: num(m['Red Cards']),
+      saves: num(m['Goalkeeper Saves']),
+      insideBox: num(m['Shots insidebox']),
+      xg: hasXg ? num(m['expected_goals']) : xgEst,
+      xgReal: hasXg,
+    };
+  }
+
+  function remainingMinutes(elapsed) {
+    if (elapsed < 45) return 45 - elapsed + 2 + 45 + 4;
+    if (elapsed < 90) return 90 - elapsed + 4;
+    return 2;
+  }
+
+  function teamRate(prior90, st, elapsed, ownGoals, oppGoals, ownRed, oppRed, o) {
+    const priorRate = prior90 / 90;
+    let rate = priorRate;
+    if (st && elapsed > 0) {
+      const obs = st.xg / elapsed;
+      const w = elapsed / (elapsed + o.priorWeightMin);
+      rate = (1 - w) * priorRate + w * obs;
+    }
+    const diff = ownGoals - oppGoals;
+    if (diff < 0) rate *= 1 + o.trailBoost * Math.min(-diff, 2);
+    if (diff > 0) rate *= 1 - o.leadDrop * Math.min(diff, 2);
+    rate *= Math.pow(o.redOwn, ownRed) * Math.pow(o.redOpp, oppRed);
+    if (elapsed >= 45) rate *= o.secondHalfBoost;
+    return rate;
+  }
+
+  function share(a, b) {
+    const t = a + b;
+    return t > 0 ? a / t : 0.5;
+  }
+
+  function pressure(h, a) {
+    if (!h || !a) return { home: 50, away: 50 };
+    const sc = (x, y) =>
+      0.4 * share(x.sot, y.sot) + 0.3 * share(x.shots, y.shots) + 0.2 * share(x.corners, y.corners) + 0.1 * share(x.poss, y.poss);
+    const home = Math.round(100 * sc(h, a));
+    return { home, away: 100 - home };
+  }
+
+  const LINES = [0.5, 1.5, 2.5, 3.5, 4.5];
+  const H1_LINES = [0.5, 1.5, 2.5];
+  const C_LINES = [7.5, 8.5, 9.5, 10.5, 11.5, 12.5];
+
+  function fair(p) {
+    return p > 0.0001 ? 1 / p : Infinity;
+  }
+
+  // fx: {elapsed, gh, ga}, rawStats: [homeRaw, awayRaw] or null
+  function analyze(fx, rawStats, opts) {
+    const o = Object.assign({}, DEFAULTS, opts || {});
+    const hs = rawStats ? teamStats(rawStats[0]) : null;
+    const as = rawStats ? teamStats(rawStats[1]) : null;
+    const e = Math.max(0, fx.elapsed || 0);
+    const rem = remainingMinutes(e);
+    const rh = teamRate(o.priorHome, hs, e, fx.gh, fx.ga, hs ? hs.red : 0, as ? as.red : 0, o);
+    const ra = teamRate(o.priorAway, as, e, fx.ga, fx.gh, as ? as.red : 0, hs ? hs.red : 0, o);
+    const lh = rh * rem;
+    const la = ra * rem;
+    const lt = lh + la;
+    const goals = fx.gh + fx.ga;
+
+    const over = {};
+    const under = {};
+    for (const line of LINES) {
+      const need = Math.floor(line) + 1 - goals;
+      const p = poissonTail(lt, need);
+      over[line] = { p, fair: fair(p) };
+      under[line] = { p: 1 - p, fair: fair(1 - p) };
+    }
+    const needH = Math.max(0, 1 - fx.gh);
+    const needA = Math.max(0, 1 - fx.ga);
+    const pb = poissonTail(lh, needH) * poissonTail(la, needA);
+
+    // First-half markets: only open while the first half is being played.
+    let h1 = null;
+    if (fx.firstHalf) {
+      const rem1 = Math.max(1, 45 - e + o.firstHalfStoppage);
+      const l1 = (rh + ra) * o.firstHalfFactor * rem1;
+      h1 = { remaining: rem1, lt: l1, goals, over: {}, under: {} };
+      for (const line of H1_LINES) {
+        const need = Math.floor(line) + 1 - goals;
+        const p = poissonTail(l1, need);
+        h1.over[line] = { p, fair: fair(p) };
+        h1.under[line] = { p: 1 - p, fair: fair(1 - p) };
+      }
+    }
+
+    // Corners (full match): needs match stats; Poisson on the corners still to come.
+    let corners = null;
+    if (hs && as) {
+      const have = hs.corners + as.corners;
+      const priorR = o.priorCorners90 / 90;
+      const w = e / (e + o.cornerPriorWeightMin);
+      let r = e > 0 ? (1 - w) * priorR + w * (have / e) : priorR;
+      if (Math.abs(fx.gh - fx.ga) === 1) r *= 1.05; // a one-goal gap keeps the trailing side pushing
+      if (e >= 75) r *= 1.1;
+      const lc = r * rem;
+      corners = { have, lt: lc, over: {}, under: {} };
+      for (const line of C_LINES) {
+        const need = Math.floor(line) + 1 - have;
+        const p = poissonTail(lc, need);
+        corners.over[line] = { p, fair: fair(p) };
+        corners.under[line] = { p: 1 - p, fair: fair(1 - p) };
+      }
+    }
+
+    // Next goal: first goal still to come (Poisson race between the two teams)
+    const pAny = lt > 0 ? 1 - Math.exp(-lt) : 0;
+    const pNH = lt > 0 ? (lh / lt) * pAny : 0;
+    const pNA = lt > 0 ? (la / lt) * pAny : 0;
+    const pNone = 1 - pNH - pNA;
+    const nextGoal = { home: { p: pNH, fair: fair(pNH) }, away: { p: pNA, fair: fair(pNA) }, none: { p: pNone, fair: fair(pNone) } };
+
+    return {
+      nextGoal,
+      h1,
+      corners,
+      elapsed: e,
+      remaining: rem,
+      lh,
+      la,
+      lt,
+      over,
+      under,
+      btts: { yes: { p: pb, fair: fair(pb) }, no: { p: 1 - pb, fair: fair(1 - pb) } },
+      pressure: pressure(hs, as),
+      home: hs,
+      away: as,
+      haveStats: !!(hs && as),
+    };
+  }
+
+  // Probability for a market the user entered odds for.
+  function marketProb(an, market, line) {
+    if (market === 'over') return an.over[line] ? an.over[line].p : null;
+    if (market === 'under') return an.under[line] ? an.under[line].p : null;
+    if (market === 'h1over') return an.h1 && an.h1.over[line] ? an.h1.over[line].p : null;
+    if (market === 'h1under') return an.h1 && an.h1.under[line] ? an.h1.under[line].p : null;
+    if (market === 'cover') return an.corners && an.corners.over[line] ? an.corners.over[line].p : null;
+    if (market === 'cunder') return an.corners && an.corners.under[line] ? an.corners.under[line].p : null;
+    if (market === 'ng_home') return an.nextGoal.home.p;
+    if (market === 'ng_away') return an.nextGoal.away.p;
+    if (market === 'ng_none') return an.nextGoal.none.p;
+    if (market === 'btts_yes') return an.btts.yes.p;
+    if (market === 'btts_no') return an.btts.no.p;
+    return null;
+  }
+
+  function edge(p, odds) {
+    if (p == null || !(odds > 1)) return null;
+    return p * odds - 1;
+  }
+
+  return { DEFAULTS, LINES, H1_LINES, C_LINES, poissonTail, teamStats, remainingMinutes, analyze, marketProb, edge };
+});
+
+</script>
+<script>
+window.Demo = (function(){ const module = { exports: {} };
+'use strict';
+// Simulated live matches in the same shape as API-Football, so the app can be tried without a key.
+// 1 simulated minute = 4 real seconds; matches loop after ~100 minutes.
+
+const START = Date.now();
+const SEC_PER_MIN = 4;
+
+const MATCHES = [
+  { id: 9001, league: 'Demo League', country: 'Greece', home: 'Athens FC', away: 'Piraeus United', hid: 1, aid: 2,
+    goals: [[12, 'h'], [55, 'a'], [78, 'h']], reds: [], sh: 1.3, sa: 0.8, xg: true },
+  { id: 9002, league: 'Demo Cup', country: 'England', home: 'Northport', away: 'Eastbridge', hid: 3, aid: 4,
+    goals: [], reds: [[40, 'a']], sh: 1.1, sa: 0.9, xg: false },
+  { id: 9003, league: 'Demo League', country: 'Spain', home: 'Real Valle', away: 'Costa Sol', hid: 5, aid: 6,
+    goals: [[5, 'h'], [9, 'h'], [33, 'a'], [61, 'a'], [88, 'h']], reds: [[70, 'h']], sh: 1.5, sa: 1.2, xg: true },
+  { id: 9004, league: 'Demo League', country: 'Italy', home: 'Torino Rossa', away: 'Napoli Azzurra', hid: 7, aid: 8,
+    goals: [[67, 'a']], reds: [], sh: 0.7, sa: 1.0, xg: false },
+];
+
+function minuteNow() {
+  return Math.floor((Date.now() - START) / 1000 / SEC_PER_MIN) % 100;
+}
+
+function eff(min) {
+  return Math.min(min, 90);
+}
+
+function scoreAt(m, min) {
+  let h = 0, a = 0;
+  for (const [t, s] of m.goals) if (t <= min) (s === 'h' ? h++ : a++);
+  return [h, a];
+}
+
+function redsAt(m, min, side) {
+  return m.reds.filter(([t, s]) => t <= min && s === side).length;
+}
+
+function liveList() {
+  const min = minuteNow();
+  if (min > 95) return [];
+  const e = eff(min);
+  const [h, a] = scoreAt(MATCHES[0], e);
+  return MATCHES.map((m) => {
+    const [gh, ga] = scoreAt(m, e);
+    return {
+      fixture: { id: m.id, date: new Date(START).toISOString(), status: { short: e <= 45 ? '1H' : '2H', elapsed: e } },
+      league: { name: m.league, country: m.country },
+      teams: { home: { id: m.hid, name: m.home }, away: { id: m.aid, name: m.away } },
+      goals: { home: gh, away: ga },
+    };
+  });
+}
+
+function stat(type, value) {
+  return { type, value };
+}
+
+function teamBlock(m, min, side) {
+  const e = eff(min);
+  const k = side === 'h' ? m.sh : m.sa;
+  const o = side === 'h' ? m.sa : m.sh;
+  const jitter = (m.id + (side === 'h' ? 1 : 2) + Math.floor(e / 7)) % 3;
+  const shots = Math.round(e * 0.14 * k + jitter);
+  const sot = Math.round(shots * 0.36);
+  const corners = Math.round(e * 0.055 * k);
+  const homePoss = Math.round(50 + (m.sh - m.sa) * 12);
+  const poss = side === 'h' ? homePoss : 100 - homePoss;
+  const yellow = Math.floor(e / (side === 'h' ? 33 : 28));
+  const red = redsAt(m, e, side);
+  const s = [
+    stat('Shots on Goal', sot),
+    stat('Total Shots', shots),
+    stat('Corner Kicks', corners),
+    stat('Ball Possession', poss + '%'),
+    stat('Yellow Cards', yellow || null),
+    stat('Red Cards', red || null),
+  ];
+  if (m.xg) s.push(stat('expected_goals', (shots * 0.075 + sot * 0.04).toFixed(2)));
+  return { team: { id: side === 'h' ? m.hid : m.aid, name: side === 'h' ? m.home : m.away }, statistics: s };
+}
+
+function matchData(id) {
+  const m = MATCHES.find((x) => x.id === Number(id));
+  if (!m) return null;
+  const min = minuteNow();
+  const e = eff(min);
+  const events = [];
+  for (const [t, s] of m.goals) if (t <= e) events.push({ time: { elapsed: t }, team: { id: s === 'h' ? m.hid : m.aid }, type: 'Goal', detail: 'Normal Goal' });
+  for (const [t, s] of m.reds) if (t <= e) events.push({ time: { elapsed: t }, team: { id: s === 'h' ? m.hid : m.aid }, type: 'Card', detail: 'Red Card' });
+  events.sort((x, y) => x.time.elapsed - y.time.elapsed);
+  return { statistics: [teamBlock(m, min, 'h'), teamBlock(m, min, 'a')], events };
+}
+
+module.exports = { liveList, matchData };
+
+return module.exports; })();
+</script>
+<script>
+/* Pre-match tab: analysis written by Claude (embedded data) + trebles computed in the browser. */
+(function () {
+  const DATA = {
+    updated: 'Τρίτη 27/10/2026 (ώρα Ελλάδας)',
+    matches: [
+      { id: 'sassuolo', ref:'Zufferli', rs:[], base:4.2, comp: 'Serie A · 9η', ko: 'Τρι 27/10 · 19:30', venue: 'Mapei Stadium, Ρέτζιο Έμιλια', home: 'Sassuolo', away: 'Lazio',
+        form: 'Sassuolo: ΗΗΙΗΝ (13ο, 2.0 γκολ κατά/αγ.). Lazio: ΝΝΝΝΙ (2η, 0.6 γκολ κατά/αγ.).',
+        absences: 'Sassuolo: Koné, Leysen, Boloca, Candé. Lazio: Gudmundsson, Rovella, Gigot, Pellegrini, Patric.',
+        text: 'Η Lazio έχει πολύ καλύτερη φόρμα και άμυνα, αλλά έχει πολλές απουσίες. Η τιμή του 2.20 αντιστοιχεί σχεδόν ακριβώς στην εκτίμησή μου, οπότε δεν υπάρχει αξία. (Οι τιμές Coral/Ladbrokes για την ισοπαλία φαίνονται λάθος και τις αγνόησα.)',
+        probs: [0.28, 0.27, 0.45],
+        markets: [
+          { id: 'sassuolo-2', label: 'Lazio νίκη', odds: 2.22, book: 'Matchbook', p: 0.45 },
+          { id: 'sassuolo-btts', label: 'BTTS Ναι', odds: 1.64, book: 'Matchbook', p: 0.58 },
+          { id: 'sassuolo-u25', label: 'Under 2.5 γκολ', odds: 2.20, book: 'Matchbook', p: 0.45 } ] },
+      { id: 'torino', ref:'Collu', rs:[], base:4.2, comp: 'Serie A · 9η', ko: 'Τρι 27/10 · 21:45', venue: 'Olimpico Grande Torino, Τορίνο', home: 'Torino', away: 'Como',
+        form: 'Torino: ΝΝΝΙΗ (10ο). Como: ΝΝΙΗΝ (5ο, 1.8 γκολ υπέρ / 0.9 κατά).',
+        absences: 'Torino: Comert (τιμωρία), Pellegri (σύνδεσμος)· Adams, Simeone αμφίβολοι. Como: καμία γνωστή.',
+        text: 'Η Como είναι καλύτερη στο χαρτί και κέρδισε 3 από τις 4 τελευταίες μεταξύ τους. Η τιμή 1.81 είναι ελάχιστα πάνω από τη δική μου εκτίμηση (περιθώριο ~1%), άρα το μόνο που αξίζει είναι παρακολούθηση, όχι ισχυρό στοίχημα.',
+        probs: [0.20, 0.24, 0.56],
+        markets: [
+          { id: 'torino-2', label: 'Como νίκη', odds: 1.81, book: 'Matchbook', p: 0.56 },
+          { id: 'torino-btts', label: 'BTTS Ναι', odds: 1.71, book: 'Matchbook', p: 0.57 },
+          { id: 'torino-u25', label: 'Under 2.5 γκολ', odds: 2.28, book: 'Matchbook', p: 0.43 } ] },
+      { id: 'dortmund', ref:'δεν έχει ανακοινωθεί', rs:[], base:3.8, comp: 'DFB-Pokal · 2ος γύρος', ko: 'Τρι 27/10 · 21:45', venue: 'Signal Iduna Park, Ντόρτμουντ', home: 'Dortmund', away: 'Werder Bremen',
+        form: 'Dortmund: ΝΝΙΗΙ. Bremen: ΝΙΙΝΙ.',
+        absences: 'Dortmund: Bensebaini, Lerma, Karetsas, Can, Mane. Bremen: 8 απουσίες (Njinmah, Topp, Lynen, Agu, Musah κ.ά.).',
+        text: 'Σαφές φαβορί, αλλά η αγορά (1.32–1.38) ήδη το τιμολογεί σωστά. Σε Κύπελλο οι τιμές αφορούν τα 90 λεπτά. Δεν βλέπω αξία.',
+        probs: [0.70, 0.19, 0.11],
+        markets: [
+          { id: 'dortmund-1', label: 'Dortmund νίκη', odds: 1.38, book: 'BetMGM', p: 0.70 },
+          { id: 'dortmund-btts', label: 'BTTS Ναι', odds: 1.67, book: 'Betfred', p: 0.58 } ] },
+      { id: 'koln', ref:'δεν έχει ανακοινωθεί', rs:[], base:3.8, comp: 'DFB-Pokal · 2ος γύρος', ko: 'Τρι 27/10 · 21:45', venue: 'RheinEnergieStadion, Κολωνία', home: 'FC Köln', away: 'Union Berlin',
+        form: 'Köln: ΗΙΝΙΗ. Union: ΗΗΝΙΙ.',
+        absences: 'Union: Markgraf, Ilic εκτός· Friedrich, Nsoki αμφίβολοι. Köln: καμία γνωστή.',
+        text: 'Ισορροπημένος αγώνας με ελαφρύ προβάδισμα για την Köln εντός. Οι τιμές 1.67–1.80 δεν αφήνουν περιθώριο αξίας.',
+        probs: [0.52, 0.25, 0.23],
+        markets: [
+          { id: 'koln-1', label: 'Köln νίκη', odds: 1.80, book: 'Betfred', p: 0.52 },
+          { id: 'koln-btts', label: 'BTTS Ναι', odds: 1.57, book: 'Betfred', p: 0.62 } ] },
+      { id: 'elversberg', ref:'δεν έχει ανακοινωθεί', rs:[], base:3.8, comp: 'DFB-Pokal · 2ος γύρος', ko: 'Τρι 27/10 · 21:45', venue: 'Ursapharm-Arena, Έλφερσμπεργκ', home: 'Elversberg', away: 'Darmstadt',
+        form: 'Elversberg: ΗΙΙΗΙ (νίκη 4-3 επί Augsburg). Darmstadt: ανεπαρκή στοιχεία.',
+        absences: 'Elversberg: 6 τραυματίες, Pinckert (τιμωρία). Darmstadt: Papela, Nürnberger, Marseiler.',
+        text: 'Η Elversberg είναι φαβορί εντός και ο Darmstadt έχει απουσίες στη μεσαία γραμμή, όμως το 1.36–1.43 είναι ήδη χαμηλό για την εκτίμησή μου. Δεν βλέπω αξία.',
+        probs: [0.65, 0.21, 0.14],
+        markets: [
+          { id: 'elversberg-1', label: 'Elversberg νίκη', odds: 1.43, book: 'BetMGM', p: 0.65 },
+          { id: 'elversberg-btts', label: 'BTTS Ναι', odds: 1.67, book: 'Betfred', p: 0.52 } ] },
+      { id: 'bochum', ref:'δεν έχει ανακοινωθεί', rs:[], base:3.8, comp: 'DFB-Pokal · 2ος γύρος', ko: 'Τρι 27/10 · 19:00', venue: 'Vonovia Ruhrstadion, Μπόχουμ', home: 'Bochum', away: 'Mainz',
+        form: 'Mainz: ΗΙΗΙΙ. Bochum: ανεπαρκή στοιχεία.',
+        absences: 'Και οι δύο: 4 απουσίες (χωρίς ονόματα στην πηγή).',
+        text: 'Το Mainz είναι φαβορί, αλλά μια πηγή δίνει μόλις 46% και η αγορά ~55%. Στο 1.71 η τιμή είναι υψηλότερη από την εκτίμησή μου, άρα αρνητική αξία.',
+        probs: [0.22, 0.25, 0.53],
+        markets: [
+          { id: 'bochum-2', label: 'Mainz νίκη', odds: 1.71, book: 'BetMGM', p: 0.53 },
+          { id: 'bochum-btts', label: 'BTTS Ναι', odds: 1.57, book: 'Betfred', p: 0.55 } ] },
+      { id: 'grossaspach', ref:'δεν έχει ανακοινωθεί', rs:[], base:3.8, comp: 'DFB-Pokal · 2ος γύρος', ko: 'Τρι 27/10 · 19:00', venue: 'WIRmachenDRUCK Arena, Άσπαχ', home: 'Großaspach', away: 'Augsburg',
+        form: 'Augsburg: ΙΗΙΗΙ (καμία νίκη στα 5). Großaspach: ανεπαρκή στοιχεία.',
+        absences: 'Großaspach: Hajdini, Faß, Ender. Augsburg: τραυματίες χωρίς ονόματα.',
+        text: 'Μεγάλη διαφορά κατηγορίας, αλλά η Augsburg έχει κακή φόρμα και η αγορά (1.30–1.38) ήδη το ξέρει. Η εκτίμησή μου είναι ελαφρώς πάνω από την αγορά· οριακό και με αβέβαιη βάση, άρα μόνο παρακολούθηση. Η τιμή είναι κάτω από 1.40.',
+        probs: [0.06, 0.20, 0.74],
+        markets: [
+          { id: 'grossaspach-2', label: 'Augsburg νίκη', odds: 1.38, book: 'BetMGM', p: 0.74 } ] },
+      { id: 'fleetwood', ref:'δεν έχει ανακοινωθεί', rs:[], base:3.8, comp: 'Carabao Cup · 4ος γύρος', ko: 'Τρι 27/10 · 22:00', venue: 'Highbury Stadium, Φλίτγουντ', home: 'Fleetwood', away: 'Arsenal',
+        form: 'Fleetwood (League Two): ΝΝΝ. Arsenal: ΝΙΝΝΝ.',
+        absences: 'Arsenal: Saka, Saliba, Tzolis. Fleetwood: Evans, McCann (τιμωρία), Thompson-Sommers, Cannon.',
+        text: 'Η Arsenal είναι τεράστιο φαβορί αλλά θα αλλάξει ενδεκάδα σε Κύπελλο. Στο 1.07–1.13 δεν έχει νόημα για στοίχημα.',
+        probs: [0.04, 0.10, 0.86],
+        markets: [
+          { id: 'fleetwood-2', label: 'Arsenal νίκη', odds: 1.13, book: 'Matchbook', p: 0.86 } ] },
+      { id: 'roma', ref:'Feliciani', rs:[[2.53,15],[2.84,43]], base:4.2, comp: 'Serie A · 9η', ko: 'Τρι 27/10 · 21:45', venue: 'Stadio Olimpico, Ρώμη', home: 'Roma', away: 'Cagliari',
+        form: 'Roma: ΙΝΙΝΝ (3ος, 16 γκολ υπέρ / 3 κατά σε 7 εντός). Cagliari: ΗΗΙΝΝ.',
+        absences: 'Roma: Dybala, Cristante, Koné, Svilar (τερματοφύλακας), Koulierakis (τραυματίες)· ο Malen επιστρέφει. Cagliari: Trepy, Felici, Idrissi, Nzola.',
+        text: 'Η Roma είναι ξεκάθαρο φαβορί στο Ολίμπικο με εξαιρετική άμυνα, αλλά οι απουσίες (ιδίως ο βασικός τερματοφύλακας) κόβουν λίγο από την πιθανότητα. Οι τιμές της αγοράς είναι ήδη «στενές»: δεν υπάρχει περιθώριο αξίας.',
+        probs: [0.71, 0.19, 0.10],
+        markets: [
+          { id: 'roma-1', label: 'Roma νίκη', odds: 1.35, book: 'William Hill', p: 0.71 },
+          { id: 'roma-u25', label: 'Under 2.5 γκολ', odds: 2.12, book: 'Matchbook', p: 0.44 },
+          { id: 'roma-btts', label: 'BTTS Ναι', odds: 2.10, book: 'Matchbook', p: 0.40 } ] },
+      { id: 'milan', ref:'Sacchi', rs:[[3.43,14],[3.79,72]], base:4.2, comp: 'Serie A · 9η', ko: 'Τετ 28/10 · 19:30', venue: 'San Siro, Μιλάνο', home: 'AC Milan', away: 'Bologna',
+        form: 'Milan: ΝΝΙΝΙ (4ο, 15 β.). Bologna: ΝΗΝΙΗ (15ο, 5 β.).',
+        absences: 'Milan: Gabbia, Saelemaekers (τραυματίες), Terracciano, Bondo (τιμωρίες). Bologna: Piccoli, Orsolini, Holm. (Η πηγή έχει αντιφάσεις στα ονόματα.)',
+        text: 'Το Μιλάνο είναι φαβορί αλλά με 4 απουσίες και αντίπαλο που δεν χάνει εύκολα στη μεγάλη διαφορά. Οι αποδόσεις των 1.62–1.66 αντιστοιχούν σχεδόν στη δική μου εκτίμηση, άρα δεν βλέπω αξία. Οι τιμές Coral/Ladbrokes (2.10 / 2.30) είναι προφανώς λάθος στην πηγή και τις αγνόησα.',
+        probs: [0.58, 0.25, 0.17],
+        markets: [
+          { id: 'milan-1', label: 'Milan νίκη', odds: 1.66, book: 'Matchbook', p: 0.58 },
+          { id: 'milan-o25', label: 'Over 2.5 γκολ', odds: 1.90, book: 'δεν αναφέρεται', p: 0.53 },
+          { id: 'milan-btts', label: 'BTTS Ναι', odds: 1.91, book: 'Matchbook', p: 0.50 } ] },
+      { id: 'venezia', ref:'Pairetto', rs:[[4.69,13],[4.48,80]], base:4.2, comp: 'Serie A · 9η', ko: 'Τετ 28/10 · 19:30', venue: 'Stadio Penzo, Βενετία', home: 'Venezia', away: 'Inter',
+        form: 'Venezia: 4 σερί ήττες (τελευταία, 3 β.). Inter: ΝΝΝΙΝ (1η, 19 β. σε 8).',
+        absences: 'Venezia: Šverko εκτός· Adorante, Busio, Correia αμφίβολοι. Inter: ο Lautaro αναφέρεται απών (δεν επιβεβαιώνεται).',
+        text: 'Ο πρώτος εναντίον του τελευταίου. Η Inter σκοράρει ~3 γκολ/αγώνα, η Venezia δέχεται πολλά και σκοράρει σπάνια. Η νίκη της Inter είναι η πιο πιθανή επιλογή, αλλά στο 1.36 η τιμή ήδη την αποτιμά σωστά. Το Under 2.5 στο 3.30 είναι ακριβό για το προφίλ του αγώνα.',
+        probs: [0.11, 0.17, 0.72],
+        markets: [
+          { id: 'venezia-2', label: 'Inter νίκη', odds: 1.36, book: 'Smarkets', p: 0.72 },
+          { id: 'venezia-btts', label: 'BTTS Ναι', odds: 1.67, book: 'Matchbook', p: 0.50 },
+          { id: 'venezia-u25', label: 'Under 2.5 γκολ', odds: 3.30, book: 'William Hill', p: 0.28 } ] },
+      { id: 'parma', ref:'Massa', rs:[[4.50,20],[4.87,100]], base:4.2, comp: 'Serie A · 9η', ko: 'Τετ 28/10 · 19:30', venue: 'Stadio Tardini, Πάρμα', home: 'Parma', away: 'Udinese',
+        form: 'Parma: 1Ν-4Η (19η). Udinese: 5 σερί ήττες (16η).',
+        absences: 'Udinese: Gueye εκτός ~3 μήνες· Alaba αμφίβολος. Parma: καμία γνωστή.',
+        text: 'Αγώνας δύο ομάδων σε κακή κατάσταση, με την Udinese σε χειρότερη φόρμα και με αμυντικά προβλήματα επικοινωνίας. Η Parma παίζει εντός και η τιμή 3.10 είναι ελαφρώς υψηλότερη από την εκτίμησή μου (+2%)· είναι οριακό και μέσα στο περιθώριο λάθους.',
+        probs: [0.33, 0.30, 0.37],
+        markets: [
+          { id: 'parma-1', label: 'Parma νίκη', odds: 3.10, book: 'Smarkets', p: 0.33 },
+          { id: 'parma-x', label: 'Ισοπαλία', odds: 3.30, book: 'Betfred', p: 0.30 },
+          { id: 'parma-u25', label: 'Under 2.5 γκολ', odds: 1.71, book: 'Matchbook', p: 0.56 } ] },
+      { id: 'genoa', ref:'Doveri', rs:[[3.32,22],[3.46,105]], base:4.2, comp: 'Serie A · 9η', ko: 'Τετ 28/10 · 21:45', venue: 'Luigi Ferraris, Γένοβα', home: 'Genoa', away: 'Juventus',
+        form: 'Genoa: ΝΗΝΗΙ (17η). Juventus: ΝΗΙΝΗ· χάσιμο 0-3 από Lazio (8η).',
+        absences: 'Genoa: Sow, Colombo, Havel, Venturino. Juventus: «σημαντικές απουσίες στην επίθεση» (χωρίς ονόματα).',
+        text: 'Η Juve πιέζεται (ο Spalletti αμφισβητείται) και έχει επιθετικές απουσίες, ενώ η Genoa είναι πληγωμένη. Οι τελευταίες 4 αναμετρήσεις είχαν ~1.8 γκολ κατά μέσο όρο. Η νίκη της Juve στο 1.72 είναι ελαφρώς ακριβή· η ισοπαλία στο 3.80 έχει μικρό θετικό περιθώριο.',
+        probs: [0.17, 0.27, 0.56],
+        markets: [
+          { id: 'genoa-2', label: 'Juventus νίκη', odds: 1.72, book: 'Matchbook', p: 0.56 },
+          { id: 'genoa-x', label: 'Ισοπαλία', odds: 3.80, book: 'Smarkets', p: 0.27 },
+          { id: 'genoa-u25', label: 'Under 2.5 γκολ', odds: 1.79, book: 'Matchbook', p: 0.56 } ] },
+      { id: 'freiburg', ref:'Storks', rs:[[4.93,15]], base:3.8, comp: 'DFB-Pokal · 2ος γύρος', ko: 'Τετ 28/10 · 19:00', venue: 'Europa-Park Stadion, Φράιμπουργκ', home: 'Freiburg', away: 'Wolfsburg',
+        form: 'Freiburg: ΗΗΗΝΝ (πρώτη ήττα στη σεζόν από Leverkusen). Wolfsburg: ΙΝΗΙ (2. Bundesliga, 8 β. σε 4).',
+        absences: 'Wolfsburg: Eriksen και «πολλοί επιθετικοί». Freiburg: μεγάλη λίστα τραυματιών (η πηγή δεν δίνει ονόματα).',
+        text: 'Ανώτερη κατηγορία εναντίον ομάδας της 2. Bundesliga, εντός έδρας, με 3 νίκες στα 4 τελευταία. Το φαβορί είναι σαφές, αλλά οι τιμές 1.36–1.42 βγάζουν αρνητική αξία με βάση την εκτίμησή μου. Σε Κύπελλο, οι τιμές αφορούν τα 90 λεπτά.',
+        probs: [0.65, 0.20, 0.15],
+        markets: [
+          { id: 'freiburg-1', label: 'Freiburg νίκη', odds: 1.42, book: 'BetMGM', p: 0.66 },
+          { id: 'freiburg-btts', label: 'BTTS Ναι', odds: 1.53, book: 'Betfred', p: 0.62 },
+          { id: 'freiburg-u25', label: 'Under 2.5 γκολ', odds: 2.95, book: 'Virgin Bet', p: 0.30 } ] },
+      { id: 'hannover', ref:'Oldhafer', rs:[], base:3.8, comp: 'DFB-Pokal · 2ος γύρος', ko: 'Τετ 28/10 · 21:45', venue: 'Heinz von Heiden Arena, Αννόβερο', home: 'Hannover 96', away: 'Kaiserslautern',
+        form: 'Και οι δύο στη 2. Bundesliga. Hannover: 9-1 στον 1ο γύρο. Kaiserslautern: 1-0 στον 1ο γύρο.',
+        absences: 'Kaiserslautern: Skyttä, Gibs, Prtajin. Hannover: δεν αναφέρονται συγκεκριμένα.',
+        text: 'Ισορροπημένος αγώνας με ελαφρύ προβάδισμα για τη γηπεδούχο λόγω έδρας και των 3 απουσιών των φιλοξενούμενων. Ο Hannover στο 2.10 δίνει αρνητική αξία· ο Kaiserslautern στο 3.05 είναι ακριβώς στο όριο.',
+        probs: [0.46, 0.25, 0.29],
+        markets: [
+          { id: 'hannover-1', label: 'Hannover νίκη', odds: 2.10, book: 'Betfred', p: 0.46 },
+          { id: 'hannover-2', label: 'Kaiserslautern νίκη', odds: 3.05, book: 'BetMGM', p: 0.29 },
+          { id: 'hannover-o25', label: 'Over 2.5 γκολ', odds: 1.49, book: 'δεν αναφέρεται', p: 0.60 } ] },
+      { id: 'bayern', ref:'Osmers', rs:[[4.38,16]], base:3.8, comp: 'DFB-Pokal · 2ος γύρος', ko: 'Τετ 28/10 · 21:45', venue: 'Allianz Arena, Μόναχο', home: 'Bayern', away: 'Magdeburg',
+        form: 'Bayern: ΝΙΝΙΙ (η πηγή αντιφάσκει). Magdeburg: 2. Bundesliga.',
+        absences: 'Δεν υπάρχουν πληροφορίες.',
+        text: 'Η Bayern (διαιτητής Osmers) στο 1.03 δεν έχει νόημα για στοίχημα (ελάχιστο κέρδος για υψηλό ρίσκο έκπληξης, π.χ. το Magdeburg την είχε αποκλείσει στο Κύπελλο το 2001). Δεν μπαίνει σε τριάδες.',
+        probs: [0.93, 0.045, 0.025],
+        markets: [
+          { id: 'bayern-1', label: 'Bayern νίκη', odds: 1.03, book: 'Betfred', p: 0.93 },
+          { id: 'bayern-o25', label: 'Over 2.5 γκολ', odds: 1.13, book: 'δεν αναφέρεται', p: 0.88 } ] },
+      { id: 'kiel', ref:'Dankert', rs:[[3.06,17]], base:3.8, comp: 'DFB-Pokal · 2ος γύρος', ko: 'Τετ 28/10 · 21:45', venue: 'Holstein-Stadion, Κίελο', home: 'Holstein Kiel', away: 'Hoffenheim',
+        form: 'Hoffenheim: ΝΝΝΗΗ. Kiel: ελάχιστα δεδομένα (δύο εντός έδρας clean sheets).',
+        absences: 'Kiel: 9 απουσίες (Rosenboom, Roslyng, Kelati, Johansson, Muqaj, Davidsen, Schonlau, Skrzybski, Tolkin). Hoffenheim: Wimmer, Hajdari, De Cat, Engelns (τιμωρία).',
+        text: 'Η Kiel έχει τεράστιο πρόβλημα με τραυματίες. Το Hoffenheim έχει κερδίσει όλες τις αναμετρήσεις (μέσος όρος 4.3 γκολ, και οι δύο σκόραραν πάντα). Έτσι, η νίκη του Hoffenheim στο 1.44 είναι πολύ κοντά στη δίκαιη τιμή.',
+        probs: [0.14, 0.18, 0.68],
+        markets: [
+          { id: 'kiel-2', label: 'Hoffenheim νίκη', odds: 1.44, book: 'Betfred', p: 0.68 },
+          { id: 'kiel-btts', label: 'BTTS Ναι', odds: 1.50, book: 'Betfred', p: 0.62 },
+          { id: 'kiel-o25', label: 'Over 2.5 γκολ', odds: 1.35, book: 'μη επιβεβαιωμένη', p: 0.72 } ] },
+      { id: 'sunderland', ref:'δεν έχει ανακοινωθεί', rs:[], base:3.8, comp: 'Carabao Cup · 4ος γύρος', ko: 'Τετ 28/10 · 21:45', venue: 'Stadium of Light, Σάντερλαντ', home: 'Sunderland', away: 'Brentford',
+        form: 'Sunderland: ΙΙΗΝΗ. Brentford: ΙΗΙΝΝ.',
+        absences: 'Sunderland: Ballard, Mundle εκτός· Meunier, Isidor αμφίβολοι· ο Yarmoliuk τιμωρημένος (κόκκινη). Brentford: Milambo, Dasilva, Furo εκτός· ο Janelt επιστρέφει από τιμωρία.',
+        text: 'Ο προπονητής της Sunderland δήλωσε ότι θα γίνουν πολλές αλλαγές στην ενδεκάδα και ότι το Carabao Cup είναι η χαμηλότερη προτεραιότητά του (η ομάδα έχει 4 ήττες και 1 ισοπαλία στα τελευταία 5 στο πρωτάθλημα). Η Brentford είναι ελαφρύ φαβορί, αλλά κι εκείνη μπορεί να αλλάξει παίκτες. Δεν υπάρχει παράταση: αν λήξει ισόπαλο πάει σε πέναλτι, οι αγορές αφορούν τα 90 λεπτά. Η απόδοση 2.00 είναι περίπου η δίκαιη.',
+        probs: [0.24, 0.26, 0.50],
+        markets: [
+          { id: 'sunderland-2', label: 'Brentford νίκη', odds: 2.00, book: 'Matchbook', p: 0.50 },
+          { id: 'sunderland-u25', label: 'Under 2.5 γκολ', odds: 2.12, book: 'Matchbook', p: 0.48 },
+          { id: 'sunderland-btts', label: 'BTTS Ναι', odds: 1.73, book: 'Matchbook', p: 0.53 } ] },
+      { id: 'fulham', ref:'δεν έχει ανακοινωθεί', rs:[], base:3.8, comp: 'Carabao Cup · 4ος γύρος', ko: 'Τετ 28/10 · 21:45', venue: 'Craven Cottage, Λονδίνο', home: 'Fulham', away: 'Crystal Palace',
+        form: 'Fulham: ΝΝΙΝΝ (15η). Palace: ΝΗΗΙΗ (17η, 19 γκολ κατά).',
+        absences: 'Fulham: ο Sessegnon τιμωρημένος (3 αγώνες)· Larsson και Smith Rowe επιστρέφουν από ενοχλήσεις. Palace: Tomiyasu, Riad εκτός· Timber (μηρός), Strand Larsen (εκτίμηση), Henderson (αμφίβολος).',
+        text: 'Η Fulham έχει καλύτερη φόρμα (2 σερί νίκες) και παίζει εντός, αλλά η Palace έχει 4 νίκες και 1 ισοπαλία στις τελευταίες 5 αναμετρήσεις και η Fulham έχει τον Sessegnon τιμωρημένο. Η Palace έχει αρκετές απουσίες (Tomiyasu, Riad, αμφιβολίες για Timber, Strand Larsen, Henderson). Έχω μόνο μία τιμή (1.80, χωρίς όνομα εταιρείας)· αρνητική αξία.',
+        probs: [0.50, 0.26, 0.24],
+        markets: [
+          { id: 'fulham-1', label: 'Fulham νίκη', odds: 1.80, book: 'δεν αναφέρεται', p: 0.50 },
+          { id: 'fulham-btts-no', label: 'BTTS Όχι', odds: 2.19, book: 'δεν αναφέρεται', p: 0.42 } ] }
+    ],
+    notCovered: 'Οι διαιτητές των Pokal και της Serie A είναι επιβεβαιωμένοι· στα Carabao Cup δεν έχουν ανακοινωθεί. Η αγορά καρτών δεν έχει τιμές από τις πηγές μου, οπότε δείχνω δίκαιη απόδοση και ελάχιστη απόδοση (γράψε την τιμή της Betpanda για να δεις το edge). Δεν κατάφερα να βρω αξιόπιστα δεδομένα για Everton–Newcastle και Jeddeloh–Hertha, οπότε δεν τους αναλύω. Στη Super League δεν υπάρχουν αγώνες μέχρι 31/10–1/11.'
+  };
+
+  const MIN_ODDS = 1.30, VALUE_ODDS = 1.40, VALUE_EDGE = 0.05, LEG_MIN = 1.40;
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let ov = {};
+  try { ov = JSON.parse(localStorage.getItem('lbd_pm_odds') || '{}') || {}; } catch (e) { ov = {}; }
+  let sortBy = 'edge';
+  let showAll = false;
+
+  // ---- referee / yellow-card model: shrink referee average toward league base, Poisson on yellow cards
+  function cardsMu(mt) {
+    const rs = mt.rs || [];
+    const n = rs.reduce((t, r) => t + r[1], 0);
+    if (!n) return mt.base;
+    const est = rs.reduce((t, r) => t + r[0] * r[1], 0) / n;
+    return (est * n + mt.base * 20) / (n + 20);
+  }
+  function poisCdf(k, mu) { let t = Math.exp(-mu), c = t; for (let i = 1; i <= k; i++) { t *= mu / i; c += t; } return c; }
+  DATA.matches.forEach((mt) => {
+    mt.mu = cardsMu(mt);
+    const L = Math.floor(mt.mu) + 0.5;
+    const pu = poisCdf(Math.floor(L), mt.mu);
+    mt.markets.push(
+      { id: mt.id + '-cu', label: 'Κίτρινες Under ' + L, odds: null, book: 'χωρίς τιμή', p: pu, cards: true },
+      { id: mt.id + '-co', label: 'Κίτρινες Over ' + L, odds: null, book: 'χωρίς τιμή', p: 1 - pu, cards: true });
+  });
+
+  const oddsOf = (m) => (ov[m.id] > 1 ? ov[m.id] : m.odds);
+  const edgeOf = (m) => { const o = oddsOf(m); return o ? m.p * o - 1 : null; };
+  function verdict(m) {
+    const o = oddsOf(m), e = edgeOf(m);
+    if (e == null) return 'x';
+    if (o >= MIN_ODDS && e >= VALUE_EDGE) return 'v';
+    if (e >= 0) return 'w';
+    return 'n';
+  }
+  const vLabel = { v: 'VALUE', w: 'WATCH', n: 'PASS', x: 'ΧΩΡΙΣ ΤΙΜΗ' };
+  const pc = (x) => (x * 100).toFixed(0) + '%';
+  const sg = (x) => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%';
+  const save = () => { try { localStorage.setItem('lbd_pm_odds', JSON.stringify(ov)); } catch (e) {} };
+
+  function allMarkets() {
+    const out = [];
+    DATA.matches.forEach((mt) => mt.markets.forEach((m) => out.push({ mt, m })));
+    return out;
+  }
+
+  // up to 2 legs per match: odds >= 1.40, model probability >= 30%, best edge first
+  function legs() {
+    const out = [];
+    DATA.matches.forEach((mt) => {
+      const c = mt.markets.filter((m) => oddsOf(m) >= LEG_MIN && m.p >= 0.30);
+      c.sort((a, b) => edgeOf(b) - edgeOf(a));
+      c.slice(0, 2).forEach((m) => out.push({ mt, m }));
+    });
+    return out;
+  }
+
+  function renderTop() {
+    const all = allMarkets();
+    const priced = all.filter((x) => oddsOf(x.m));
+    const nV = priced.filter((x) => verdict(x.m) === 'v').length;
+    const nW = priced.filter((x) => verdict(x.m) === 'w' && oddsOf(x.m) >= MIN_ODDS).length;
+    const picks = priced.filter((x) => oddsOf(x.m) >= MIN_ODDS && edgeOf(x.m) >= 0).sort((a, b) => edgeOf(b.m) - edgeOf(a.m));
+    let h = '<h2>Σύνοψη</h2>';
+    h += '<div class="txt">Ενημέρωση: ' + esc(DATA.updated) + '. Αναλύθηκαν ' + DATA.matches.length + ' αγώνες.</div>';
+    h += '<div class="txt"><b>' + nV + '</b> στοιχήματα πληρούν το κριτήριο VALUE (απόδοση ≥ ' + MIN_ODDS.toFixed(2) + ' και πλεονέκτημα ≥ ' + (VALUE_EDGE * 100) + '%). ';
+    h += '<b>' + nW + '</b> είναι οριακά θετικά (WATCH).</div>';
+    if (picks.length) {
+      h += '<h2 style="margin-top:12px">Χωριστές προτάσεις</h2>';
+      picks.forEach(({ mt, m }) => {
+        const v = verdict(m), fair = 1 / m.p;
+        h += '<div class="tri"><div class="legs"><b>' + esc(mt.home) + ' – ' + esc(mt.away) + '</b> · ' + esc(m.label) +
+          ' <span class="verdict ' + v + '">' + vLabel[v] + '</span></div>' +
+          '<div class="m">απόδοση ' + oddsOf(m).toFixed(2) + ' (' + esc(m.book) + ') · δική μου πιθανότητα ' + pc(m.p) + ' · δίκαιη απόδοση ' + fair.toFixed(2) +
+          ' · πλεονέκτημα ' + sg(edgeOf(m)) + ' · παίξε μόνο αν ≥ ' + (fair * 1.06).toFixed(2) + (oddsOf(m) >= VALUE_ODDS ? '' : ' · κάτω από 1.40') + '</div></div>';
+      });
+    } else {
+      h += '<div class="txt">Δεν βρήκα κανένα στοίχημα με απόδοση ≥ 1.30 και θετικό πλεονέκτημα.</div>';
+    }
+    h += '<p class="note">Οι αποδόσεις είναι ενδεικτικές από βρετανικούς bookmakers (Betfred, William Hill, Matchbook, Smarkets κ.ά.), <b>όχι από την Betpanda</b>. Οι πιθανότητες είναι δικές μου εκτιμήσεις, όχι εγγυήσεις. Οι πηγές έχουν αντιφάσεις· ελέγξτε ενδεκάδες και τιμές πριν παίξετε. Γράψε την πραγματική απόδοση της Betpanda σε μια αγορά για να ξαναϋπολογιστούν όλα, και οι τριάδες. Οι κάρτες υπολογίζονται από τον μέσο όρο κίτρινων του διαιτητή (τραβηγμένο προς τον μέσο όρο του πρωταθλήματος) με κατανομή Poisson· δεν λαμβάνουν υπόψη τη συμπεριφορά των ομάδων.</p>';
+    $('#preTop').innerHTML = h;
+  }
+
+  function renderMatches() {
+    let h = '';
+    DATA.matches.forEach((mt) => {
+      const rsTxt = (mt.rs || []).length ? mt.rs.map((r) => r[0].toFixed(2) + ' (' + r[1] + ' αγ.)').join(' / ') : 'χωρίς στοιχεία';
+      h += '<div class="pm"><h3>' + esc(mt.home) + ' – ' + esc(mt.away) + '</h3>' +
+        '<div class="sub">' + esc(mt.comp) + ' · ' + esc(mt.ko) + ' · ' + esc(mt.venue) + '</div>' +
+        '<div class="txt">' + esc(mt.text) + '</div>' +
+        '<div class="abs"><b>Φόρμα:</b> ' + esc(mt.form) + '</div>' +
+        '<div class="abs"><b>Απουσίες:</b> ' + esc(mt.absences) + '</div>' +
+        '<div class="abs"><b>Διαιτητής:</b> ' + esc(mt.ref) + ' · κίτρινες/αγώνα: ' + rsTxt + ' → αναμενόμενες ~' + mt.mu.toFixed(1) + '</div>' +
+        '<div class="abs"><b>Εκτίμησή μου (1-Χ-2):</b> ' + pc(mt.probs[0]) + ' · ' + pc(mt.probs[1]) + ' · ' + pc(mt.probs[2]) + '</div>';
+      h += '<table><tr><th>Αγορά</th><th>Απόδ.</th><th>Π.</th><th>Edge / ελάχ.</th><th></th></tr>';
+      mt.markets.forEach((m) => {
+        const v = verdict(m), e = edgeOf(m), o = oddsOf(m);
+        h += '<tr><td>' + esc(m.label) + '<div class="abs">' + esc(m.book) + '</div></td>' +
+          '<td><input type="number" step="0.01" min="1.01" data-oid="' + m.id + '" value="' + (o ? o.toFixed(2) : '') + '" placeholder="—"></td>' +
+          '<td>' + pc(m.p) + '</td><td class="' + (e == null ? '' : e >= 0 ? 'pos' : 'neg') + '">' + (e == null ? '≥ ' + (1.06 / m.p).toFixed(2) : sg(e)) + '</td>' +
+          '<td><span class="verdict ' + (v === 'x' ? 'n' : v) + '">' + vLabel[v] + '</span></td></tr>';
+      });
+      h += '</table></div>';
+    });
+    h += '<p class="note">' + esc(DATA.notCovered) + '</p>';
+    $('#preMatches').innerHTML = h;
+  }
+
+  function renderTriples() {
+    const L = legs();
+    const T = [];
+    for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) for (let k = j + 1; k < L.length; k++) {
+      const a = [L[i], L[j], L[k]];
+      if (new Set(a.map((x) => x.mt.id)).size < 3) continue; // three different matches
+      const p = a.reduce((s, x) => s * x.m.p, 1);
+      const o = a.reduce((s, x) => s * oddsOf(x.m), 1);
+      T.push({ a, p, o, e: p * o - 1 });
+    }
+    const all = T.length;
+    T.splice(0, T.length, ...T.filter((t) => t.e >= 0.02 && t.p >= 0.05));
+    T.sort((x, y) => (sortBy === 'p' ? y.p - x.p : sortBy === 'o' ? y.o - x.o : y.e - x.e));
+    const shown = showAll ? T.slice(0, 200) : T.slice(0, 15);
+    let h = '<div class="seg">' +
+      ['edge|Κατά edge', 'p|Κατά πιθανότητα', 'o|Κατά απόδοση'].map((s) => {
+        const [k, l] = s.split('|');
+        return '<button type="button" data-sort="' + k + '" class="' + (sortBy === k ? 'on' : '') + '">' + l + '</button>';
+      }).join('') + '</div>';
+    h += '<div class="txt">Κάθε τριάδα έχει <b>3 διαφορετικούς αγώνες</b> και κάθε επιλογή έχει απόδοση ≥ 1.40 και πιθανότητα ≥ 30% (έως 2 επιλογές ανά αγώνα). Εμφανίζονται μόνο όσες έχουν θετικό edge (≥ +2%) και πιθανότητα ≥ 5%: <b>' + T.length + '</b> από ' + all + '.</div>';
+    if (!T.length) h += '<div class="txt">Καμία τριάδα δεν αξίζει αυτή τη στιγμή.</div>';
+    shown.forEach((t) => {
+      h += '<div class="tri"><div class="legs">' + t.a.map((x) => esc(x.mt.home) + '–' + esc(x.mt.away) + ': <b>' + esc(x.m.label) + '</b> @' + oddsOf(x.m).toFixed(2) + ' <span class="muted">(' + pc(x.m.p) + ')</span>').join('<br>') + '</div>' +
+        '<div class="m">συνολική απόδοση ' + t.o.toFixed(2) + ' · πιθανότητα ' + pc(t.p) + ' · δίκαιη απόδοση ' + (1 / t.p).toFixed(2) +
+        ' · edge <span class="' + (t.e >= 0 ? 'pos' : 'neg') + '">' + sg(t.e) + '</span></div></div>';
+    });
+    if (T.length > 15) h += '<div class="row"><button type="button" id="pmMore">' + (showAll ? 'Εμφάνιση λιγότερων' : 'Εμφάνιση περισσότερων (έως 200)') + '</button></div>';
+    h += '<p class="note">Οι πιθανότητες πολλαπλασιάζονται (αγώνες ανεξάρτητοι). Σε τριάδες το περιθώριο του bookmaker πολλαπλασιάζεται κι αυτό, και τα μικρά θετικά edge προκύπτουν από τις δικές μου εκτιμήσεις και πολλαπλασιάζουν και το σφάλμα τους, άρα μην τα εμπιστεύεσαι ως «αξία». Δεν υπάρχει τριάδα που να είναι «ασφαλής»· όσο μεγαλύτερη η απόδοση, τόσο μικρότερη η πιθανότητα. Για να μπουν κάρτες στις τριάδες, γράψε την τιμή τους (≥ 1.40).</p>';
+    $('#preTriples').innerHTML = h;
+  }
+
+  const METHOD = [
+    ['ok', 'Τιμές αγοράς (consensus)', 'Αφαιρώ το περιθώριο των bookmakers και βγάζω «δίκαιες» πιθανότητες. Έγινε για όλους τους αγώνες, αλλά μόνο από βρετανικές εταιρείες, όχι Betpanda.'],
+    ['ok', 'Φόρμα και βαθμολογία', 'Τελευταία 5 αγώνες, θέση, γκολ υπέρ/κατά. Έγινε, αλλά οι πηγές έχουν αντιφάσεις.'],
+    ['ok', 'Απουσίες και τιμωρίες', 'Ιδίως τερματοφύλακας και επιθετικοί. Έγινε από τις διαθέσιμες πηγές.'],
+    ['ok', 'Διαιτητής και κάρτες', 'Μέσος όρος κίτρινων ανά αγώνα, κατεβασμένος προς τον μέσο όρο του πρωταθλήματος. Έγινε για 9 από 11 αγώνες.'],
+    ['ok', 'Κίνητρο και εναλλαγές (rotation)', 'Κύπελλα και προτεραιότητες. Ενσωματώθηκε (π.χ. Sunderland στο Carabao Cup).'],
+    ['no', 'Επιβεβαιωμένες ενδεκάδες', 'Βγαίνουν ~1 ώρα πριν. Αλλάζουν τα πάντα, ιδίως στα Κύπελλα. Πρέπει να τις ξαναδώ πριν παίξεις.'],
+    ['no', 'Κίνηση της απόδοσης', 'Αν η τιμή πέφτει ή ανεβαίνει προς το κλείσιμο, δείχνει πού πάνε τα έξυπνα λεφτά. Δεν έχω δεδομένα.'],
+    ['no', 'xG και σουτ, όχι μόνο αποτελέσματα', 'Ομάδες με τύχη ή ατυχία παλινδρομούν. Θα το έβλεπα από το API-Football στα πρωταθλήματα που καλύπτει.'],
+    ['no', 'Σταθερά περιστατικά και κόρνερ ομάδων', 'Για αγορές κόρνερ και γκολ από στατικές φάσεις.'],
+    ['no', 'Καιρός και γήπεδο', 'Βροχή και αέρας μειώνουν τα γκολ. Δεν το ελέγχω ακόμη.'],
+    ['no', 'Πέναλτι και κόκκινες του διαιτητή', 'Έχω μόνο κίτρινες, όχι πέναλτι/κόκκινες.'],
+    ['no', 'Κόπωση και πρόγραμμα', 'Αγώνες Ευρώπης μέσα στη βδομάδα, ταξίδια, μέρες ανάπαυσης.'],
+    ['rule', 'Συσχέτιση επιλογών', 'Δεν βάζω στην ίδια τριάδα επιλογές του ίδιου αγώνα. Οι αγώνες θεωρούνται ανεξάρτητοι.'],
+    ['rule', 'Διαχείριση κεφαλαίου', 'Μικρό σταθερό ποσό ανά στοίχημα (π.χ. 1–2% του κεφαλαίου) και ποτέ κυνήγι απωλειών. Οι τριάδες έχουν μεγάλη διακύμανση.'],
+    ['rule', 'Σύγκριση εταιρειών', 'Παίζω μόνο αν η απόδοση της Betpanda είναι ≥ της «ελάχιστης απόδοσης» που γράφω.']
+  ];
+  function renderMethod() {
+    const ic = { ok: '✓', no: '✗', rule: '•' };
+    $('#preMethod').innerHTML = METHOD.map((r) => '<div class="tri"><div class="legs"><b>' + ic[r[0]] + ' ' + esc(r[1]) + '</b></div><div class="m">' + esc(r[2]) + '</div></div>').join('') +
+      '<p class="note">✓ = το έχω λάβει υπόψη σε αυτή την ανάλυση · ✗ = δεν το έχω ακόμη, και θα άλλαζε τις εκτιμήσεις · • = κανόνας πειθαρχίας.</p>';
+  }
+
+  function render() { renderTop(); renderMatches(); renderTriples(); $('#preMethod').innerHTML = ''; }
+
+  document.addEventListener('change', (e) => {
+    const i = e.target.closest && e.target.closest('input[data-oid]');
+    if (!i) return;
+    const v = parseFloat(i.value);
+    if (v > 1) ov[i.dataset.oid] = v; else delete ov[i.dataset.oid];
+    save(); render();
+  });
+  document.addEventListener('click', (e) => {
+    const s = e.target.closest && e.target.closest('[data-sort]');
+    if (s) { sortBy = s.dataset.sort; renderTriples(); return; }
+    if (e.target.id === 'pmMore') { showAll = !showAll; renderTriples(); }
+  });
+
+  window.PreMatch = { render, DATA, legs, verdict, edgeOf };
+})();
+
+</script>
+<script>
+'use strict';
+(function () {
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const LS = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch { return d; } };
+  const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+
+  let settings = Object.assign({ interval: 45, threshold: 8, scanAll: false, sound: true, saver: true }, LS('lbd_settings', {}));
+  let tracked = new Set(LS('lbd_tracked', []));
+  let oddsStore = LS('lbd_odds', {});
+  let fixtures = [];
+  let details = {}; // id -> {statistics, events}
+  let analyses = {}; // id -> analysis
+  let status = { mode: 'demo', quota: {} };
+  let selected = null;
+  let lastAlert = {};
+  let timer = null;
+  let busy = false;
+  let direct = false; // true when there is no local server: the page talks to API-Football itself (phone-only use)
+  const dcache = new Map();
+
+  const MARKETS = [];
+  for (const l of Model.LINES) MARKETS.push({ k: 'o' + l, label: 'Over ' + l, market: 'over', line: l });
+  for (const l of Model.LINES) MARKETS.push({ k: 'u' + l, label: 'Under ' + l, market: 'under', line: l });
+  for (const l of Model.H1_LINES) MARKETS.push({ k: 'h1o' + l, label: '1st half Over ' + l, market: 'h1over', line: l });
+  for (const l of Model.H1_LINES) MARKETS.push({ k: 'h1u' + l, label: '1st half Under ' + l, market: 'h1under', line: l });
+  for (const l of Model.C_LINES) MARKETS.push({ k: 'co' + l, label: 'Corners Over ' + l, market: 'cover', line: l });
+  for (const l of Model.C_LINES) MARKETS.push({ k: 'cu' + l, label: 'Corners Under ' + l, market: 'cunder', line: l });
+  MARKETS.push({ k: 'ngh', label: 'Next goal: Home', market: 'ng_home' }, { k: 'nga', label: 'Next goal: Away', market: 'ng_away' }, { k: 'ngn', label: 'Next goal: None', market: 'ng_none' });
+  MARKETS.push({ k: 'by', label: 'BTTS Yes', market: 'btts_yes' }, { k: 'bn', label: 'BTTS No', market: 'btts_no' });
+
+  const LIVE_STATES = new Set(['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE']);
+
+  function fxOf(f) {
+    const sh = (f.fixture.status && f.fixture.status.short) || '';
+    const el = (f.fixture.status && f.fixture.status.elapsed) || 0;
+    return { elapsed: el, gh: f.goals.home ?? 0, ga: f.goals.away ?? 0, firstHalf: sh === '1H' || (sh === 'LIVE' && el <= 45) };
+  }
+  function nameOf(f) { return f.teams.home.name + ' – ' + f.teams.away.name; }
+  const pct = (p) => (p * 100).toFixed(0) + '%';
+  const od = (x) => (isFinite(x) ? x.toFixed(2) : '—');
+
+  function confidence(an) {
+    if (!an.haveStats || an.elapsed < 15) return ['low', 'low confidence'];
+    if (an.elapsed < 30) return ['mid', 'medium confidence'];
+    return ['high', 'good data'];
+  }
+
+  function reasonText(f, an) {
+    const r = [];
+    if (an.haveStats) {
+      r.push(`shots on target ${an.home.sot}-${an.away.sot}, shots ${an.home.shots}-${an.away.shots}, corners ${an.home.corners}-${an.away.corners}`);
+      r.push(`pressure ${an.pressure.home}-${an.pressure.away}`);
+      if (an.home.red || an.away.red) r.push(`red cards ${an.home.red}-${an.away.red}`);
+    } else r.push('no match stats yet (model uses league averages)');
+    r.push(`~${an.lt.toFixed(2)} goals expected in the remaining ~${Math.round(an.remaining)} min`);
+    if (an.corners) r.push(`corners so far ${an.corners.have}, ~${an.corners.lt.toFixed(1)} more expected`);
+    r.push(`next goal: home ${pct(an.nextGoal.home.p)} · away ${pct(an.nextGoal.away.p)} · none ${pct(an.nextGoal.none.p)}`);
+    if (an.h1) r.push(`~${an.h1.lt.toFixed(2)} more goals expected before half-time`);
+    return r.join(' · ');
+  }
+
+  function candidates() {
+    const value = [];
+    const model = [];
+    for (const f of fixtures) {
+      const an = analyses[f.fixture.id];
+      if (!an) continue;
+      const o = oddsStore[f.fixture.id] || {};
+      const modelForMatch = [];
+      for (const mk of MARKETS) {
+        const p = Model.marketProb(an, mk.market, mk.line);
+        if (p == null) continue;
+        const odds = parseFloat(o[mk.k]);
+        if (odds > 1) {
+          const e = Model.edge(p, odds);
+          if (e != null && e * 100 >= settings.threshold && p >= 0.2) value.push({ f, an, mk, p, odds, edge: e });
+        } else if (p >= 0.6 && p <= 0.9 && an.haveStats && an.elapsed >= 15) {
+          modelForMatch.push({ f, an, mk, p, minOdds: (1 / p) * 1.06 });
+        }
+      }
+      modelForMatch.sort((a, b) => b.p - a.p);
+      const seen = new Set();
+      for (const c of modelForMatch) {
+        const kind = c.mk.market.startsWith('btts') ? 'btts' : c.mk.market.startsWith('h1') ? 'h1' : c.mk.market.startsWith('c') ? 'corners' : c.mk.market.startsWith('ng') ? 'ng' : 'ou';
+        if (seen.has(kind)) continue;
+        seen.add(kind);
+        model.push(c);
+      }
+    }
+    value.sort((a, b) => b.edge - a.edge);
+    model.sort((a, b) => b.p - a.p);
+    return { value, model };
+  }
+
+  function tally(c) {
+    const m = c.mk.market, an = c.an;
+    if (m === 'cover' || m === 'cunder') return an.corners ? ` · corners so far: <b>${an.corners.have}</b> (${an.home.corners}-${an.away.corners})` : '';
+    return '';
+  }
+  function tallyText(c) { return tally(c).replace(/<[^>]+>/g, ''); }
+
+  function renderPicks() {
+    const { value, model } = candidates();
+    const box = $('#picks');
+    if (!fixtures.length) { box.innerHTML = '<p class="muted">No live matches right now.</p>'; return; }
+    if (!Object.keys(analyses).length) { box.innerHTML = '<p class="muted">Star (☆) matches to analyse them, or enable “Analyse all live matches” in Settings. Suggestions appear once a match has stats and ~15 minutes played.</p>'; return; }
+    let html = '';
+    for (const c of value.slice(0, 6)) {
+      const [cl, ct] = confidence(c.an);
+      html += `<div class="pick value" data-id="${c.f.fixture.id}"><div class="t">${esc(nameOf(c.f))}<span class="tag ${cl}">${ct}</span></div>
+        <div class="m">${c.an.elapsed}' · ${c.f.goals.home ?? 0}-${c.f.goals.away ?? 0}${tally(c)}</div>
+        <div class="big">${esc(c.mk.label)} @ ${c.odds.toFixed(2)} → edge +${(c.edge * 100).toFixed(1)}%</div>
+        <div class="m">Model ${pct(c.p)} (fair ${od(1 / c.p)}) · ${esc(reasonText(c.f, c.an))}</div></div>`;
+    }
+    for (const c of model.slice(0, Math.max(0, 6 - Math.min(value.length, 6)))) {
+      const [cl, ct] = confidence(c.an);
+      html += `<div class="pick" data-id="${c.f.fixture.id}"><div class="t">${esc(nameOf(c.f))}<span class="tag ${cl}">${ct}</span></div>
+        <div class="m">${c.an.elapsed}' · ${c.f.goals.home ?? 0}-${c.f.goals.away ?? 0}${tally(c)}</div>
+        <div class="big">${esc(c.mk.label)} — model ${pct(c.p)}</div>
+        <div class="m">Worth it only if Betpanda offers ≥ <b>${c.minOdds.toFixed(2)}</b> · ${esc(reasonText(c.f, c.an))}</div></div>`;
+    }
+    box.innerHTML = html || '<p class="muted">No clear pick at the moment. That is a valid answer — not every match offers value.</p>';
+  }
+
+  function renderList() {
+    const box = $('#list');
+    if (!fixtures.length) { box.innerHTML = '<p class="muted">No live matches.</p>'; return; }
+    box.innerHTML = fixtures.map((f) => {
+      const id = f.fixture.id;
+      const st = f.fixture.status || {};
+      const min = st.short === 'HT' ? 'HT' : (st.elapsed || 0) + "'";
+      return `<div class="match ${id === selected ? 'sel' : ''}" data-id="${id}">
+        <button class="star ${tracked.has(id) ? 'on' : ''}" data-star="${id}" title="Track / analyse">${tracked.has(id) ? '★' : '☆'}</button>
+        <div class="min">${min}</div>
+        <div class="names"><div>${esc(f.teams.home.name)}</div><div>${esc(f.teams.away.name)}</div><div class="lg">${esc(f.league.name)}</div></div>
+        <div class="sc"><div>${f.goals.home ?? 0}</div><div>${f.goals.away ?? 0}</div></div></div>`;
+    }).join('');
+  }
+
+  function bar(label, a, b) {
+    const t = a + b;
+    const w = t > 0 ? (a / t) * 100 : 50;
+    return `<div class="row"><div class="l">${a}</div><div><div class="lab">${label}</div><div class="track"><i class="h" style="width:${w}%"></i><i class="a" style="width:${100 - w}%"></i></div></div><div class="r">${b}</div></div>`;
+  }
+
+  function renderDetail() {
+    const box = $('#detail');
+    const f = fixtures.find((x) => x.fixture.id === selected);
+    if (!f) { box.innerHTML = '<p class="muted">Select a match.</p>'; return; }
+    if (box.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return; // don't disturb typing
+    const id = f.fixture.id;
+    const an = analyses[id];
+    const st = f.fixture.status || {};
+    let h = `<h2>${esc(f.league.name)}</h2><div class="score"><span>${esc(f.teams.home.name)}</span><span class="sc">${f.goals.home ?? 0} - ${f.goals.away ?? 0}</span><span>${esc(f.teams.away.name)}</span><span class="min">${st.short === 'HT' ? 'HT' : (st.elapsed || 0) + "'"}</span></div>`;
+    if (!an) {
+      h += '<p class="muted">Not analysed yet — press ☆ to track this match.</p>';
+      box.innerHTML = h; return;
+    }
+    const [cl, ct] = confidence(an);
+    h += `<div class="muted">Model: ~${an.lt.toFixed(2)} more goals expected (${esc(f.teams.home.name)} ${an.lh.toFixed(2)}, ${esc(f.teams.away.name)} ${an.la.toFixed(2)}) <span class="tag ${cl}">${ct}</span></div>`;
+    if (an.haveStats) {
+      h += `<div class="bars sec">${bar('Pressure index', an.pressure.home, an.pressure.away)}${bar('Shots on target', an.home.sot, an.away.sot)}${bar('Total shots', an.home.shots, an.away.shots)}${bar('Corners', an.home.corners, an.away.corners)}${bar('Possession %', an.home.poss, an.away.poss)}${bar('Yellow cards', an.home.yellow, an.away.yellow)}${bar('Red cards', an.home.red, an.away.red)}${an.home.xgReal ? bar('xG', +an.home.xg.toFixed(2), +an.away.xg.toFixed(2)) : ''}</div>`;
+    }
+    const o = oddsStore[id] || {};
+    h += `<div class="sec"><h2>Markets — type the Betpanda odds</h2><table><tr><th>Market</th><th>Model</th><th>Fair</th><th>Odds</th><th>Edge</th></tr>`;
+    for (const mk of MARKETS) {
+      const p = Model.marketProb(an, mk.market, mk.line);
+      if (p == null || p < 0.02 || p > 0.985) continue;
+      const odds = parseFloat(o[mk.k]);
+      const e = Model.edge(p, odds);
+      const cls = e == null ? '' : e >= settings.threshold / 100 ? 'val' : '';
+      h += `<tr class="${cls}"><td>${esc(mk.label)}</td><td>${pct(p)}</td><td>${od(1 / p)}</td><td><input inputmode="decimal" data-odds="${mk.k}" value="${o[mk.k] ?? ''}" placeholder="—"></td><td class="edge ${e == null ? '' : e > 0 ? 'pos' : 'neg'}">${e == null ? '' : (e > 0 ? '+' : '') + (e * 100).toFixed(1) + '%'}</td></tr>`;
+    }
+    h += '</table></div>';
+    const ev = (details[id] && details[id].events) || [];
+    if (ev.length) {
+      h += '<div class="sec events"><h2>Events</h2>' + ev.filter((e) => e.type === 'Goal' || e.type === 'Card').map((e) => {
+        const side = e.team && e.team.id === f.teams.home.id ? f.teams.home.name : f.teams.away.name;
+        return `<div>${e.time.elapsed}' — ${esc(e.type === 'Goal' ? 'Goal' : e.detail)} — ${esc(side)}</div>`;
+      }).join('') + '</div>';
+    }
+    box.innerHTML = h;
+  }
+
+  function renderStatus() {
+    const c = $('#chipMode');
+    c.textContent = status.mode === 'demo' ? 'DEMO DATA (simulated)' : direct ? 'LIVE DATA · standalone' : 'LIVE DATA';
+    c.className = 'chip ' + (status.mode === 'demo' ? 'demo' : 'live');
+    const q = status.quota || {};
+    const qc = $('#chipQuota');
+    if (status.mode === 'live' && q.daily != null) {
+      qc.hidden = false;
+      qc.textContent = q.daily < 20 ? `Only ${q.daily} API requests left today` : `API requests left today: ${q.daily}`;
+      qc.className = 'chip' + (q.daily < 20 ? ' demo' : '');
+    } else qc.hidden = true;
+    $('#chipUpdated').textContent = 'updated ' + new Date().toLocaleTimeString('el-GR', { timeZone: 'Europe/Athens' });
+  }
+
+  function toast(msg) {
+    const d = document.createElement('div');
+    d.className = 'toast';
+    d.textContent = msg;
+    $('#toasts').appendChild(d);
+    setTimeout(() => d.remove(), 12000);
+  }
+  function beep() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination); o.frequency.value = 880; g.gain.value = 0.08;
+      o.start(); o.stop(ctx.currentTime + 0.25);
+    } catch {}
+  }
+
+  function checkAlerts() {
+    const { value } = candidates();
+    const now = Date.now();
+    for (const c of value) {
+      const key = c.f.fixture.id + ':' + c.mk.k;
+      const prev = lastAlert[key];
+      if (prev && c.edge < prev.edge + 0.05 && now - prev.t < 5 * 60 * 1000) continue;
+      lastAlert[key] = { edge: c.edge, t: now };
+      const msg = `VALUE: ${nameOf(c.f)} — ${c.mk.label} @ ${c.odds.toFixed(2)} (edge +${(c.edge * 100).toFixed(1)}%, model ${pct(c.p)})${tallyText(c)}`;
+      toast(msg);
+      if (settings.sound) beep();
+      try { if ('Notification' in window && Notification.permission === 'granted') new Notification('Value pick', { body: msg }); } catch {}
+    }
+  }
+
+  async function directGet(p, ttl) {
+    const hit = dcache.get(p);
+    if (hit && Date.now() - hit.t < ttl) return hit.v;
+    const key = LS('lbd_key', '');
+    if (!key) throw new Error('Add your API-Football key in Settings');
+    const r = await fetch('https://v3.football.api-sports.io' + p, { headers: { 'x-apisports-key': key } });
+    const d = r.headers.get('x-ratelimit-requests-remaining');
+    if (d != null) status.quota = Object.assign({}, status.quota, { daily: Number(d) });
+    if (!r.ok) throw new Error('API-Football HTTP ' + r.status);
+    const j = await r.json();
+    const errs = j.errors && (Array.isArray(j.errors) ? j.errors : Object.values(j.errors));
+    if (errs && errs.length) throw new Error('API-Football: ' + errs.join('; '));
+    dcache.set(p, { t: Date.now(), v: j.response });
+    return j.response;
+  }
+
+  function useDemo() {
+    return direct && window.Demo && (!LS('lbd_key', '') || LS('lbd_demo', false));
+  }
+
+  async function fetchLive() {
+    if (!direct) return getJSON('/api/live');
+    if (useDemo()) return { mode: 'demo', quota: {}, fixtures: window.Demo.liveList() };
+    const fixtures = await directGet('/fixtures?live=all', settings.saver ? 120000 : 20000);
+    return { mode: 'live', quota: status.quota, fixtures };
+  }
+
+  async function fetchMatch(id) {
+    if (!direct) return getJSON('/api/match?id=' + id);
+    if (useDemo()) { const d = window.Demo.matchData(id); if (!d) throw new Error('unknown demo match'); return { mode: 'demo', quota: {}, statistics: d.statistics, events: d.events }; }
+    const statistics = await directGet('/fixtures/statistics?fixture=' + id, settings.saver ? 180000 : 25000);
+    const events = settings.saver ? [] : await directGet('/fixtures/events?fixture=' + id, 25000);
+    return { mode: 'live', quota: status.quota, statistics, events };
+  }
+
+  async function detectMode() {
+    if (window.FORCE_DIRECT) { direct = true; return; }
+    try {
+      const r = await fetch('/api/status', { cache: 'no-store' });
+      const j = await r.json();
+      direct = !(r.ok && j && j.mode);
+    } catch { direct = true; }
+  }
+
+  async function getJSON(url) {
+    const r = await fetch(url, { cache: 'no-store' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    return j;
+  }
+
+  async function refresh() {
+    if (busy) return;
+    busy = true;
+    try {
+      const live = await fetchLive();
+      status.mode = live.mode; status.quota = live.quota || {};
+      fixtures = (live.fixtures || []).filter((f) => LIVE_STATES.has((f.fixture.status || {}).short));
+      const ids = new Set(fixtures.map((f) => f.fixture.id));
+      for (const k of Object.keys(analyses)) if (!ids.has(Number(k))) delete analyses[k];
+      if (selected && !ids.has(selected)) selected = null;
+      if (!selected && fixtures.length) selected = fixtures[0].fixture.id;
+
+      const scanAll = settings.scanAll || live.mode === 'demo';
+      let targets = scanAll ? fixtures.slice(0, 8) : fixtures.filter((f) => tracked.has(f.fixture.id));
+      if (selected && !targets.some((f) => f.fixture.id === selected) && tracked.has(selected)) targets.push(fixtures.find((f) => f.fixture.id === selected));
+      await Promise.all(targets.map(async (f) => {
+        try {
+          const d = await fetchMatch(f.fixture.id);
+          status.quota = d.quota || status.quota;
+          details[f.fixture.id] = d;
+          const raw = d.statistics && d.statistics.length >= 2 ? d.statistics : null;
+          analyses[f.fixture.id] = Model.analyze(fxOf(f), raw);
+        } catch (e) {
+          if (!analyses[f.fixture.id]) analyses[f.fixture.id] = Model.analyze(fxOf(f), null);
+        }
+      }));
+      renderStatus(); renderList(); renderPicks(); renderDetail(); checkAlerts();
+    } catch (e) {
+      $('#chipUpdated').textContent = 'error: ' + e.message;
+    } finally { busy = false; }
+  }
+
+  function schedule() {
+    if (timer) clearInterval(timer);
+    timer = setInterval(refresh, Math.max(10, settings.interval) * 1000);
+  }
+
+  // ---- events
+  document.addEventListener('click', (e) => {
+    const star = e.target.closest('[data-star]');
+    if (star) {
+      const id = Number(star.dataset.star);
+      tracked.has(id) ? tracked.delete(id) : tracked.add(id);
+      save('lbd_tracked', [...tracked]);
+      selected = id;
+      refresh();
+      return;
+    }
+    const m = e.target.closest('.match');
+    if (m) { selected = Number(m.dataset.id); renderList(); renderDetail(); $('#detail').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    const p = e.target.closest('.pick');
+    if (p) { selected = Number(p.dataset.id); renderList(); renderDetail(); $('#detail').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  });
+
+  document.addEventListener('change', (e) => {
+    const inp = e.target.closest('[data-odds]');
+    if (!inp || selected == null) return;
+    const v = inp.value.replace(',', '.').trim();
+    oddsStore[selected] = oddsStore[selected] || {};
+    if (v === '' || !(parseFloat(v) > 1)) delete oddsStore[selected][inp.dataset.odds];
+    else oddsStore[selected][inp.dataset.odds] = v;
+    save('lbd_odds', oddsStore);
+    inp.blur();
+    renderPicks(); renderDetail(); checkAlerts();
+  });
+
+  $('#btnRefresh').onclick = refresh;
+  $('#btnSettings').onclick = () => {
+    $('#setInterval').value = String(settings.interval);
+    $('#setThreshold').value = settings.threshold;
+    $('#setScanAll').checked = settings.scanAll;
+    $('#setSound').checked = settings.sound;
+    $('#setSaver').checked = settings.saver;
+    $('#dlg').showModal();
+  };
+  $('#dlg').addEventListener('close', () => {
+    settings.interval = Number($('#setInterval').value);
+    settings.threshold = Math.max(1, Number($('#setThreshold').value) || 8);
+    settings.scanAll = $('#setScanAll').checked;
+    settings.sound = $('#setSound').checked;
+    settings.saver = $('#setSaver').checked;
+    save('lbd_settings', settings);
+    schedule(); refresh();
+  });
+  $('#btnSaveKey').onclick = async () => {
+    const key = $('#keyInput').value.trim();
+    if (direct) {
+      if (!/^[A-Za-z0-9_-]{16,80}$/.test(key)) { toast('Key format looks wrong'); return; }
+      save('lbd_key', key); save('lbd_demo', false); dcache.clear(); analyses = {}; details = {};
+      $('#keyInput').value = '';
+      toast('API key saved on this phone. Loading live data.');
+      refresh(); return;
+    }
+    try {
+      const r = await fetch('/api/key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) });
+      const j = await r.json();
+      toast(r.ok ? 'API key saved. Switching to live data.' : 'Key not saved: ' + j.error);
+      $('#keyInput').value = '';
+      refresh();
+    } catch (e) { toast('Could not save key: ' + e.message); }
+  };
+  $('#btnDemo').onclick = async () => {
+    if (direct) {
+      if (!window.Demo) { toast('Demo data is only available in the phone file or when the app runs from the computer.'); return; }
+      const on = !useDemo();
+      if (!on && !LS('lbd_key', '')) { toast('Save your API-Football key first to switch to live data.'); return; }
+      save('lbd_demo', on); analyses = {}; details = {}; dcache.clear();
+      toast(on ? 'Mode: demo (simulated data)' : 'Mode: live data'); refresh(); return;
+    }
+    const on = status.mode !== 'demo';
+    const r = await fetch('/api/demo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on }) });
+    const j = await r.json();
+    toast('Mode: ' + j.mode);
+    analyses = {}; details = {}; refresh();
+  };
+  $('#btnNotif').onclick = async () => {
+    try { const p = await Notification.requestPermission(); toast('Notifications: ' + p); } catch { toast('Notifications are not available here'); }
+  };
+
+  // Keep the phone screen awake while the dashboard is open (timers pause when the screen locks).
+  async function keepAwake() {
+    try { if ('wakeLock' in navigator) await navigator.wakeLock.request('screen'); } catch {}
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { keepAwake(); refresh(); } });
+  document.addEventListener('click', keepAwake, { once: true });
+
+  // ---- tabs
+  function showTab(name) {
+    $('#viewLive').hidden = name !== 'live';
+    $('#viewPre').hidden = name !== 'pre';
+    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === name));
+    if (name === 'pre' && window.PreMatch) window.PreMatch.render();
+    window.scrollTo(0, 0);
+  }
+  document.addEventListener('click', (e) => { const tab = e.target.closest('.tab'); if (tab) showTab(tab.dataset.tab); });
+
+  detectMode().then(() => { schedule(); refresh(); });
+})();
+
+</script>
+</body>
+</html>
