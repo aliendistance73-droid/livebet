@@ -110,6 +110,18 @@ dialog input[type=text], dialog input[type=password], dialog input[type=number],
 .rp { font-size: 14px; margin: 2px 0; }
 #watchWrap > summary { cursor: pointer; }
 
+.seg { display: flex; gap: 6px; margin: 8px 0; }
+.tabbtn { flex: 1; padding: 7px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); color: var(--muted); font: inherit; }
+.tabbtn.on { color: var(--text, #fff); border-color: var(--blue); }
+.brow { padding: 8px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.brow.hotrow .bt { color: var(--amber); }
+.bt { font-size: 14px; } .bm { color: var(--muted); font-size: 12px; }
+.bar { position: relative; height: 12px; border-radius: 6px; background: var(--panel2); border: 1px solid var(--line); margin: 5px 0; overflow: hidden; }
+.bar .tick { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--muted); opacity: .6; }
+.bar .fill { position: absolute; top: 0; bottom: 0; }
+.bar .fill.h { background: var(--blue); } .bar .fill.a { background: var(--amber); }
+.bs { font-size: 11px; color: var(--muted); }
+
 header { padding-top: max(10px, env(safe-area-inset-top, 0px)); }
 </style>
 </head>
@@ -140,11 +152,13 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); }
     <h2>🔥 Ραντάρ πίεσης</h2>
     <p class="note" id="radarStatus">Φόρτωση…</p>
     <div id="radarHot"></div>
-    <p class="note">Ειδοποιώ όταν μια ομάδα πιέζει έντονα (σουτ, στόχο, κόρνερ στα τελευταία ~10'). Προτείνω μόνο πιθανές αγορές και την ελάχιστη απόδοση που αξίζει (≥1.30). Κράτα την εφαρμογή ανοιχτή και την οθόνη αναμμένη.</p>
+    <div class="seg"><button class="tabbtn on" data-bm="star">★ Μόνο αστέρια</button><button class="tabbtn" data-bm="all">Όλοι οι live</button></div>
+    <div id="radarBoard"></div>
+    <p class="note">Οι μπάρες γεμίζουν προς την ομάδα που πιέζει (σουτ, στόχο, κόρνερ, εντός περιοχής στα τελευταία ~10'· το API δεν δίνει «επικίνδυνες επιθέσεις»). Πρώτος ο αγώνας με τη μεγαλύτερη πίεση. Ειδοποιώ όταν η πίεση γίνει έντονη. Προτείνω μόνο πιθανές αγορές και την ελάχιστη απόδοση που αξίζει (≥1.30). Κράτα την εφαρμογή ανοιχτή και την οθόνη αναμμένη.</p>
   </section>
   <section class="card"><h2>Ιστορικό ειδοποιήσεων</h2><div id="radarFeed"></div></section>
 
-  <details class="card" id="watchWrap"><summary><h2 style="display:inline">Αγώνες &amp; ★ παρακολούθηση</h2></summary>
+  <details class="card" id="watchWrap" open><summary><h2 style="display:inline">Αγώνες &amp; ★ παρακολούθηση</h2></summary>
   <div id="layout">
     <aside class="card" id="listCard">
       <h2>Live matches</h2>
@@ -519,12 +533,12 @@ window.Radar = (function () {
   let feed = [];
   try { feed = JSON.parse(localStorage.getItem('lbd_feed') || '[]'); } catch {}
 
-  const xgOf = (s) => 0.11 * s.sot + 0.04 * Math.max(0, s.shots - s.sot) + 0.015 * s.corners;
+  const xgOf = (s) => 0.11 * s.sot + 0.04 * Math.max(0, s.shots - s.sot) + 0.015 * s.corners + 0.02 * (s.inbox || 0);
 
   function snap(an, elapsed) {
-    return { e: elapsed, h: { sot: an.home.sot, shots: an.home.shots, corners: an.home.corners }, a: { sot: an.away.sot, shots: an.away.shots, corners: an.away.corners } };
+    return { e: elapsed, h: { sot: an.home.sot, shots: an.home.shots, corners: an.home.corners, inbox: an.home.insideBox }, a: { sot: an.away.sot, shots: an.away.shots, corners: an.away.corners, inbox: an.away.insideBox } };
   }
-  function diff(x, y) { return { sot: x.sot - y.sot, shots: x.shots - y.shots, corners: x.corners - y.corners }; }
+  function diff(x, y) { return { sot: x.sot - y.sot, shots: x.shots - y.shots, corners: x.corners - y.corners, inbox: (x.inbox || 0) - (y.inbox || 0) }; }
 
   function window_(st, now) {
     const h = st.hist;
@@ -552,6 +566,7 @@ window.Radar = (function () {
       if (sh >= TRIGGER && sh >= DOMINANCE * sa && dh.shots >= 3) out.hot = 'home';
       else if (sa >= TRIGGER && sa >= DOMINANCE * sh && da.shots >= 3) out.hot = 'away';
     }
+    out.cumH = now.h; out.cumA = now.a; out.e = e;
     st.m = out;
     return out;
   }
@@ -640,6 +655,29 @@ window.Radar = (function () {
     }
     return cards.join('') || '<p class="muted">Καμία έντονη πίεση αυτή τη στιγμή. Θα σε ειδοποιήσω όταν εμφανιστεί.</p>';
   }
+
+  function bar(f, m) {
+    const useWin = !m.calibrating;
+    const dh = useWin ? m.dh : m.cumH, da = useWin ? m.da : m.cumA;
+    const sh = xgOf(dh), sa = xgOf(da), tot = sh + sa;
+    const share = tot > 0 ? sh / tot : 0.5;           // 0..1 towards home
+    const lead = (share - 0.5) * 2;                    // -1..1
+    const net = Math.abs(sh - sa);
+    const w = Math.min(50, Math.abs(lead) * 50);
+    const cls = lead >= 0 ? 'h' : 'a';
+    const fill = `<div class="fill ${cls}" style="${lead >= 0 ? 'left' : 'right'}:50%;width:${w}%"></div>`;
+    const lab = useWin ? `τελευταία ${Math.round(m.span)}'` : 'σύνολο αγώνα (μαζεύω δεδομένα)';
+    return { net, html: `<div class="brow${m.hot ? ' hotrow' : ''}" data-id="${f.fixture.id}">
+      <div class="bt"><span class="bm">${f.fixture.status.elapsed}'</span> <b>${esc(f.teams.home.name)}</b> ${f.goals.home ?? 0}-${f.goals.away ?? 0} <b>${esc(f.teams.away.name)}</b>${m.hot ? ' 🔥' : ''}</div>
+      <div class="bar"><span class="tick"></span>${fill}</div>
+      <div class="bs">${lab}: σουτ ${dh.shots}-${da.shots} · στόχο ${dh.sot}-${da.sot} · κόρνερ ${dh.corners}-${da.corners} · εντός περιοχής ${dh.inbox || 0}-${da.inbox || 0}</div></div>` };
+  }
+  function renderBoard(fixtures) {
+    const rows = [];
+    for (const f of fixtures) { const st = state[f.fixture.id]; if (st && st.m) rows.push(bar(f, st.m)); }
+    rows.sort((a, b) => b.net - a.net);
+    return rows.map((x) => x.html).join('') || '<p class="muted">Δεν υπάρχουν δεδομένα ακόμα. Βάλε ★ σε αγώνες από τη λίστα παρακάτω ή διάλεξε «Όλοι».</p>';
+  }
   function renderFeed() {
     if (!feed.length) return '<p class="muted">Δεν υπάρχουν ειδοποιήσεις ακόμα.</p>';
     return feed.slice(0, 12).map((a) => `<div class="fd"><div class="t">${new Date(a.t).toLocaleTimeString('el-GR', { timeZone: 'Europe/Athens', hour: '2-digit', minute: '2-digit' })} · ${esc(a.match)} <span class="muted">${a.min}' · ${a.score}</span></div>
@@ -652,7 +690,7 @@ window.Radar = (function () {
   }
   function summary(a) { return a.match + ' ' + a.score + ' (' + a.min + "')\n🔥 " + a.team + ' — ' + a.ev + '\n' + a.picks.map((s) => '• ' + s.label + ' (' + (s.p * 100).toFixed(0) + '%, απόδοση ≥ ' + s.min.toFixed(2) + ')').join('\n'); }
 
-  return { ingest, renderHot, renderFeed, monitoring, summary, _state: state, _measure: measure, _suggest: suggest, get feed() { return feed; } };
+  return { ingest, renderBoard, renderHot, renderFeed, monitoring, summary, _state: state, _measure: measure, _suggest: suggest, get feed() { return feed; } };
 })();
 
 </script>
@@ -1197,7 +1235,7 @@ window.Radar = (function () {
   const LS = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch { return d; } };
   const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
-  let settings = Object.assign({ interval: 60, threshold: 8, scanAll: false, sound: true, saver: false, radarAuto: true }, LS('lbd_settings', {}));
+  let settings = Object.assign({ interval: 60, threshold: 8, scanAll: false, sound: true, saver: false, radarAuto: true, boardAll: false }, LS('lbd_settings', {}));
   let tracked = new Set(LS('lbd_tracked', []));
   let oddsStore = LS('lbd_odds', {});
   let fixtures = [];
@@ -1426,6 +1464,8 @@ window.Radar = (function () {
     const hot = $('#radarHot'), feed = $('#radarFeed'), st = $('#radarStatus');
     if (!hot) return;
     hot.innerHTML = Radar.renderHot(fixtures);
+    $('#radarBoard').innerHTML = Radar.renderBoard(fixtures);
+    document.querySelectorAll('[data-bm]').forEach((b) => b.classList.toggle('on', (b.dataset.bm === 'all') === !!settings.boardAll));
     feed.innerHTML = Radar.renderFeed();
     const m = Radar.monitoring(fixtures);
     st.textContent = !fixtures.length ? 'Δεν υπάρχουν live αγώνες αυτή τη στιγμή.' : m.n ? `Παρακολουθώ ${m.n} αγώνες${m.cal ? ' · ' + m.cal + ' ακόμα μαζεύουν δεδομένα (χρειάζονται ~5\' ανοιχτή εφαρμογή)' : ''}.` : 'Περιμένω στατιστικά από τους αγώνες των μεγάλων λιγκών…';
@@ -1510,8 +1550,7 @@ window.Radar = (function () {
       if (!selected && fixtures.length) selected = fixtures[0].fixture.id;
 
       const scanAll = settings.scanAll || live.mode === 'demo';
-      const auto = (f) => settings.radarAuto && (RADAR_LEAGUES.has(f.league.id) || /greece/i.test(f.league.country || ''));
-      let targets = scanAll ? fixtures.slice(0, 12) : fixtures.filter((f) => tracked.has(f.fixture.id) || auto(f)).slice(0, 12);
+      let targets = (scanAll || settings.boardAll) ? fixtures.slice(0, 15) : fixtures.filter((f) => tracked.has(f.fixture.id));
       targets = targets.filter((f) => !['HT', 'BT'].includes((f.fixture.status || {}).short));
       if (selected && !targets.some((f) => f.fixture.id === selected) && tracked.has(selected)) targets.push(fixtures.find((f) => f.fixture.id === selected));
       await Promise.all(targets.map(async (f) => {
@@ -1539,6 +1578,8 @@ window.Radar = (function () {
 
   // ---- events
   document.addEventListener('click', (e) => {
+    const bm = e.target.closest('[data-bm]');
+    if (bm) { settings.boardAll = bm.dataset.bm === 'all'; save('lbd_settings', settings); refresh(); return; }
     const star = e.target.closest('[data-star]');
     if (star) {
       const id = Number(star.dataset.star);
@@ -1550,7 +1591,7 @@ window.Radar = (function () {
     }
     const m = e.target.closest('.match');
     if (m) { selected = Number(m.dataset.id); renderList(); renderDetail(); $('#detail').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
-    const p = e.target.closest('.pick, .hot');
+    const p = e.target.closest('.pick, .hot, .brow');
     if (p) { selected = Number(p.dataset.id); renderList(); renderDetail(); $('#detail').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   });
 
