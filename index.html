@@ -103,6 +103,13 @@ dialog input[type=text], dialog input[type=password], dialog input[type=number],
 .seg { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
 .seg button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
 
+.hot { background: var(--panel2); border: 1px solid #7a5410; border-left: 4px solid var(--amber); border-radius: 10px; padding: 9px 11px; margin-bottom: 8px; cursor: pointer; }
+.hot .t, .fd .t { font-weight: 600; }
+.hot .m, .fd .m { font-size: 12px; color: var(--muted); margin: 2px 0 4px; }
+.fd { border-bottom: 1px solid var(--line); padding: 8px 0; }
+.rp { font-size: 14px; margin: 2px 0; }
+#watchWrap > summary { cursor: pointer; }
+
 header { padding-top: max(10px, env(safe-area-inset-top, 0px)); }
 </style>
 </head>
@@ -129,19 +136,22 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); }
 
 <main>
 <div id="viewLive">
-  <section class="card" id="picksCard">
-    <h2>Best picks right now</h2>
-    <div id="picks" class="picks"><p class="muted">Loading…</p></div>
-    <p class="note">Picks come from the model, not from certainty. Each pick shows the minimum odds worth taking.</p>
+  <section class="card" id="radarCard">
+    <h2>🔥 Ραντάρ πίεσης</h2>
+    <p class="note" id="radarStatus">Φόρτωση…</p>
+    <div id="radarHot"></div>
+    <p class="note">Ειδοποιώ όταν μια ομάδα πιέζει έντονα (σουτ, στόχο, κόρνερ στα τελευταία ~10'). Προτείνω μόνο πιθανές αγορές και την ελάχιστη απόδοση που αξίζει (≥1.30). Κράτα την εφαρμογή ανοιχτή και την οθόνη αναμμένη.</p>
   </section>
+  <section class="card"><h2>Ιστορικό ειδοποιήσεων</h2><div id="radarFeed"></div></section>
 
+  <details class="card" id="watchWrap"><summary><h2 style="display:inline">Αγώνες &amp; ★ παρακολούθηση</h2></summary>
   <div id="layout">
     <aside class="card" id="listCard">
       <h2>Live matches</h2>
       <div id="list"></div>
     </aside>
-    <section class="card" id="detail"><p class="muted">Select a match.</p></section>
-  </div>
+    <section class="card" id="detail"><p class="muted">Επίλεξε αγώνα.</p></section>
+  </div></details>
 </div>
 
 <div id="viewPre" hidden>
@@ -169,7 +179,8 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); }
     <label>Value alert threshold (edge %)
       <input id="setThreshold" type="number" min="1" max="50" step="1">
     </label>
-    <label class="inline"><input id="setScanAll" type="checkbox"> Analyse all live matches (max 8) — uses more API requests</label>
+    <label class="inline"><input id="setAuto" type="checkbox"> Ραντάρ: αυτόματη παρακολούθηση μεγάλων λιγκών + Ελλάδας</label>
+    <label class="inline"><input id="setScanAll" type="checkbox"> Ανάλυση όλων των live αγώνων (max 12) — περισσότερα requests</label>
     <label class="inline"><input id="setSaver" type="checkbox"> Data saver (recommended for the free API plan): list every 2 min, stats every 3 min, no event feed</label>
     <label class="inline"><input id="setSound" type="checkbox"> Sound alert on value pick</label>
     <div class="row"><button type="button" id="btnNotif">Enable browser notifications</button></div>
@@ -492,6 +503,158 @@ function matchData(id) {
 module.exports = { liveList, matchData };
 
 return module.exports; })();
+</script>
+<script>
+'use strict';
+// Pressure radar: tracks how stats change over the last ~10 game minutes and flags a team that is
+// clearly dominating, then proposes the most probable markets (never a long shot).
+window.Radar = (function () {
+  const WINDOW = 10;       // game minutes looked back
+  const MIN_SPAN = 5;      // need at least this many minutes of history
+  const TRIGGER = 0.40;    // pressing team's estimated xG gained in the window
+  const DOMINANCE = 2.2;   // ...and at least this multiple of the opponent's
+  const COOLDOWN = 8;      // game minutes between alerts for same match
+  const P_MIN = 0.5, P_MAX = 0.77; // => minimum playable odds always >= 1.30
+  const state = {};        // fixture id -> {hist:[], last:null, alertAt:-99}
+  let feed = [];
+  try { feed = JSON.parse(localStorage.getItem('lbd_feed') || '[]'); } catch {}
+
+  const xgOf = (s) => 0.11 * s.sot + 0.04 * Math.max(0, s.shots - s.sot) + 0.015 * s.corners;
+
+  function snap(an, elapsed) {
+    return { e: elapsed, h: { sot: an.home.sot, shots: an.home.shots, corners: an.home.corners }, a: { sot: an.away.sot, shots: an.away.shots, corners: an.away.corners } };
+  }
+  function diff(x, y) { return { sot: x.sot - y.sot, shots: x.shots - y.shots, corners: x.corners - y.corners }; }
+
+  function window_(st, now) {
+    const h = st.hist;
+    let base = null;
+    for (const s of h) if (s.e >= now.e - WINDOW) { base = s; break; }
+    if (!base) base = h[h.length - 1];
+    return base;
+  }
+
+  // returns {home, away, span, dh, da, sh, sa, hot:'home'|'away'|null}
+  function measure(id, f, an) {
+    const e = an.elapsed;
+    if (!an.haveStats || !f) return null;
+    const st = state[id] || (state[id] = { hist: [], alertAt: -99, e: 0 });
+    const now = snap(an, e);
+    if (st.hist.length && e < st.hist[st.hist.length - 1].e) st.hist = []; // new half / reset
+    if (!st.hist.length || e > st.hist[st.hist.length - 1].e) st.hist.push(now);
+    st.hist = st.hist.filter((s) => s.e >= e - 25);
+    const base = window_(st, now);
+    const span = e - base.e;
+    const dh = diff(now.h, base.h), da = diff(now.a, base.a);
+    const sh = xgOf(dh), sa = xgOf(da);
+    const out = { span, dh, da, sh, sa, hot: null, calibrating: span < MIN_SPAN };
+    if (!out.calibrating) {
+      if (sh >= TRIGGER && sh >= DOMINANCE * sa && dh.shots >= 3) out.hot = 'home';
+      else if (sa >= TRIGGER && sa >= DOMINANCE * sh && da.shots >= 3) out.hot = 'away';
+    }
+    st.m = out;
+    return out;
+  }
+
+  // Probability of reaching `need` events with Poisson mean l
+  function tail(l, need) { return window.Model.poissonTail(l, need); }
+
+  // Build most-probable suggestions for the pressing side.
+  function suggest(f, an, m) {
+    const side = m.hot;
+    const e = an.elapsed, rem = an.remaining;
+    const goals = (f.goals.home ?? 0) + (f.goals.away ?? 0);
+    const span = Math.max(m.span, 1);
+    const recent = side === 'home' ? m.sh : m.sa;
+    const recentOpp = side === 'home' ? m.sa : m.sh;
+    const baseT = side === 'home' ? an.lh : an.la;
+    const baseO = side === 'home' ? an.la : an.lh;
+    // pressure-adjusted goal means for the rest of the game: half model, half recent rate (capped at 3x model)
+    const adj = (base, r) => { const mr = base / Math.max(rem, 1); const rr = Math.min(r / span, mr * 3); return (0.5 * mr + 0.5 * rr) * rem; };
+    const lT = adj(baseT, recent), lO = adj(baseO, recentOpp), lt = lT + lO;
+    const name = side === 'home' ? f.teams.home.name : f.teams.away.name;
+    const out = [];
+    const push = (kind, label, p, why) => { if (p >= (kind === 'ng' ? 0.42 : P_MIN) && p <= P_MAX) out.push({ kind, label, p, min: (1 / p) * 1.06, why }); };
+
+    // goals lines (best = highest p still <= P_MAX)
+    for (let k = 0; k <= 3; k++) {
+      const line = goals + k + 0.5;
+      push('goals', 'Over ' + line + ' γκολ', tail(lt, k + 1));
+    }
+    if (an.h1) {
+      const l1 = (lt / Math.max(rem, 1)) * 0.93 * an.h1.remaining;
+      for (let k = 0; k <= 2; k++) push('h1', 'Ημίχρονο Over ' + (goals + k + 0.5), tail(l1, k + 1));
+    }
+    push('ng', 'Επόμενο γκολ: ' + name, lt > 0 ? (lT / lt) * (1 - Math.exp(-lt)) : 0);
+    const own = side === 'home' ? (f.goals.home ?? 0) : (f.goals.away ?? 0);
+    push('score', name + ' να σκοράρει (Over ' + (own + 0.5) + ' τέρματα ομάδας)', tail(lT, 1));
+    // corners: recent corner rate blended with match rate
+    const have = an.corners ? an.corners.have : 0;
+    const rc = (m.dh.corners + m.da.corners) / span;
+    const cm = an.corners ? an.corners.lt / Math.max(rem, 1) : 0.11;
+    const lc = (0.5 * cm + 0.5 * Math.min(rc, cm * 2.5)) * rem;
+    for (let k = 0; k <= 5; k++) push('corners', 'Κόρνερ Over ' + (have + k + 0.5), tail(lc, k + 1), 'κόρνερ τώρα: ' + have);
+    // one per kind: highest p within range
+    const best = {};
+    for (const s of out) if (!best[s.kind] || s.p > best[s.kind].p) best[s.kind] = s;
+    return { side, name, picks: Object.values(best).sort((a, b) => b.p - a.p).slice(0, 4) };
+  }
+
+  function evidence(f, m, side) {
+    const t = side === 'home' ? m.dh : m.da, o = side === 'home' ? m.da : m.dh;
+    return `τελευταία ${Math.round(m.span)}': σουτ ${t.shots}-${o.shots} · στο στόχο ${t.sot}-${o.sot} · κόρνερ ${t.corners}-${o.corners}`;
+  }
+
+  // Called after each stats refresh. Returns list of newly created alerts.
+  function ingest(f, an) {
+    const id = f.fixture.id;
+    const m = measure(id, f, an);
+    if (!m) return [];
+    const st = state[id];
+    const created = [];
+    if (m.hot && an.elapsed - st.alertAt >= COOLDOWN && an.elapsed >= 5 && an.elapsed <= 88) {
+      const sg = suggest(f, an, m);
+      st.sug = sg;
+      if (sg.picks.length) {
+        st.alertAt = an.elapsed;
+        const a = { id, t: Date.now(), min: an.elapsed, match: f.teams.home.name + ' – ' + f.teams.away.name, score: (f.goals.home ?? 0) + '-' + (f.goals.away ?? 0), team: sg.name, ev: evidence(f, m, m.hot), picks: sg.picks };
+        feed.unshift(a); feed = feed.slice(0, 30);
+        try { localStorage.setItem('lbd_feed', JSON.stringify(feed)); } catch {}
+        created.push(a);
+      }
+    } else if (m.hot) { st.sug = suggest(f, an, m); } else st.sug = null;
+    return created;
+  }
+
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const pick = (s) => `<div class="rp"><b>${esc(s.label)}</b> <span class="muted">· πιθανότητα ${(s.p * 100).toFixed(0)}% · παίξε μόνο αν η απόδοση ≥ <b>${s.min.toFixed(2)}</b></span></div>`;
+
+  function renderHot(fixtures) {
+    const cards = [];
+    for (const f of fixtures) {
+      const st = state[f.fixture.id];
+      if (!st || !st.m || !st.m.hot || !st.sug || !st.sug.picks.length) continue;
+      const m = st.m;
+      cards.push(`<div class="hot" data-id="${f.fixture.id}"><div class="t">🔥 ${esc(f.teams.home.name)} ${f.goals.home ?? 0}-${f.goals.away ?? 0} ${esc(f.teams.away.name)} <span class="muted">${f.fixture.status.elapsed}'</span></div>
+        <div class="m">Πιέζει: <b>${esc(st.sug.name)}</b> · ${esc(evidence(f, m, m.hot))}</div>${st.sug.picks.map(pick).join('')}</div>`);
+    }
+    return cards.join('') || '<p class="muted">Καμία έντονη πίεση αυτή τη στιγμή. Θα σε ειδοποιήσω όταν εμφανιστεί.</p>';
+  }
+  function renderFeed() {
+    if (!feed.length) return '<p class="muted">Δεν υπάρχουν ειδοποιήσεις ακόμα.</p>';
+    return feed.slice(0, 12).map((a) => `<div class="fd"><div class="t">${new Date(a.t).toLocaleTimeString('el-GR', { timeZone: 'Europe/Athens', hour: '2-digit', minute: '2-digit' })} · ${esc(a.match)} <span class="muted">${a.min}' · ${a.score}</span></div>
+      <div class="m">Πίεση: ${esc(a.team)} · ${esc(a.ev)}</div>${a.picks.map(pick).join('')}</div>`).join('');
+  }
+  function monitoring(fixtures) {
+    let cal = 0, n = 0;
+    for (const f of fixtures) { const st = state[f.fixture.id]; if (st && st.m) { n++; if (st.m.calibrating) cal++; } }
+    return { n, cal };
+  }
+  function summary(a) { return a.match + ' ' + a.score + ' (' + a.min + "')\n🔥 " + a.team + ' — ' + a.ev + '\n' + a.picks.map((s) => '• ' + s.label + ' (' + (s.p * 100).toFixed(0) + '%, απόδοση ≥ ' + s.min.toFixed(2) + ')').join('\n'); }
+
+  return { ingest, renderHot, renderFeed, monitoring, summary, _state: state, _measure: measure, _suggest: suggest, get feed() { return feed; } };
+})();
+
 </script>
 <script>
 /* Pre-match tab: analysis written by Claude (embedded data) + trebles computed in the browser. */
@@ -1034,7 +1197,7 @@ return module.exports; })();
   const LS = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch { return d; } };
   const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
-  let settings = Object.assign({ interval: 45, threshold: 8, scanAll: false, sound: true, saver: true }, LS('lbd_settings', {}));
+  let settings = Object.assign({ interval: 60, threshold: 8, scanAll: false, sound: true, saver: false, radarAuto: true }, LS('lbd_settings', {}));
   let tracked = new Set(LS('lbd_tracked', []));
   let oddsStore = LS('lbd_odds', {});
   let fixtures = [];
@@ -1130,6 +1293,7 @@ return module.exports; })();
   function tallyText(c) { return tally(c).replace(/<[^>]+>/g, ''); }
 
   function renderPicks() {
+    if (!$('#picks')) return;
     const { value, model } = candidates();
     const box = $('#picks');
     if (!fixtures.length) { box.innerHTML = '<p class="muted">No live matches right now.</p>'; return; }
@@ -1250,6 +1414,23 @@ return module.exports; })();
     } catch {}
   }
 
+  const RADAR_LEAGUES = new Set([135, 78, 39, 140, 61, 197, 199, 2, 3, 848, 81, 48, 45, 137, 143, 66, 40, 88, 94]);
+  function fireAlert(al) {
+    const msg = '🔥 ' + Radar.summary(al);
+    toast(msg);
+    if (settings.sound) beep();
+    try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch {}
+    try { if ('Notification' in window && Notification.permission === 'granted') new Notification('🔥 Πίεση: ' + al.team, { body: msg }); } catch {}
+  }
+  function renderRadar() {
+    const hot = $('#radarHot'), feed = $('#radarFeed'), st = $('#radarStatus');
+    if (!hot) return;
+    hot.innerHTML = Radar.renderHot(fixtures);
+    feed.innerHTML = Radar.renderFeed();
+    const m = Radar.monitoring(fixtures);
+    st.textContent = !fixtures.length ? 'Δεν υπάρχουν live αγώνες αυτή τη στιγμή.' : m.n ? `Παρακολουθώ ${m.n} αγώνες${m.cal ? ' · ' + m.cal + ' ακόμα μαζεύουν δεδομένα (χρειάζονται ~5\' ανοιχτή εφαρμογή)' : ''}.` : 'Περιμένω στατιστικά από τους αγώνες των μεγάλων λιγκών…';
+  }
+
   function checkAlerts() {
     const { value } = candidates();
     const now = Date.now();
@@ -1288,15 +1469,15 @@ return module.exports; })();
   async function fetchLive() {
     if (!direct) return getJSON('/api/live');
     if (useDemo()) return { mode: 'demo', quota: {}, fixtures: window.Demo.liveList() };
-    const fixtures = await directGet('/fixtures?live=all', settings.saver ? 120000 : 20000);
+    const fixtures = await directGet('/fixtures?live=all', 55000);
     return { mode: 'live', quota: status.quota, fixtures };
   }
 
   async function fetchMatch(id) {
     if (!direct) return getJSON('/api/match?id=' + id);
     if (useDemo()) { const d = window.Demo.matchData(id); if (!d) throw new Error('unknown demo match'); return { mode: 'demo', quota: {}, statistics: d.statistics, events: d.events }; }
-    const statistics = await directGet('/fixtures/statistics?fixture=' + id, settings.saver ? 180000 : 25000);
-    const events = settings.saver ? [] : await directGet('/fixtures/events?fixture=' + id, 25000);
+    const statistics = await directGet('/fixtures/statistics?fixture=' + id, 50000);
+    const events = [];
     return { mode: 'live', quota: status.quota, statistics, events };
   }
 
@@ -1329,7 +1510,9 @@ return module.exports; })();
       if (!selected && fixtures.length) selected = fixtures[0].fixture.id;
 
       const scanAll = settings.scanAll || live.mode === 'demo';
-      let targets = scanAll ? fixtures.slice(0, 8) : fixtures.filter((f) => tracked.has(f.fixture.id));
+      const auto = (f) => settings.radarAuto && (RADAR_LEAGUES.has(f.league.id) || /greece/i.test(f.league.country || ''));
+      let targets = scanAll ? fixtures.slice(0, 12) : fixtures.filter((f) => tracked.has(f.fixture.id) || auto(f)).slice(0, 12);
+      targets = targets.filter((f) => !['HT', 'BT'].includes((f.fixture.status || {}).short));
       if (selected && !targets.some((f) => f.fixture.id === selected) && tracked.has(selected)) targets.push(fixtures.find((f) => f.fixture.id === selected));
       await Promise.all(targets.map(async (f) => {
         try {
@@ -1338,11 +1521,12 @@ return module.exports; })();
           details[f.fixture.id] = d;
           const raw = d.statistics && d.statistics.length >= 2 ? d.statistics : null;
           analyses[f.fixture.id] = Model.analyze(fxOf(f), raw);
+          if (window.Radar && analyses[f.fixture.id].haveStats) for (const al of Radar.ingest(f, analyses[f.fixture.id])) fireAlert(al);
         } catch (e) {
           if (!analyses[f.fixture.id]) analyses[f.fixture.id] = Model.analyze(fxOf(f), null);
         }
       }));
-      renderStatus(); renderList(); renderPicks(); renderDetail(); checkAlerts();
+      renderStatus(); renderList(); renderRadar(); renderDetail();
     } catch (e) {
       $('#chipUpdated').textContent = 'error: ' + e.message;
     } finally { busy = false; }
@@ -1366,7 +1550,7 @@ return module.exports; })();
     }
     const m = e.target.closest('.match');
     if (m) { selected = Number(m.dataset.id); renderList(); renderDetail(); $('#detail').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
-    const p = e.target.closest('.pick');
+    const p = e.target.closest('.pick, .hot');
     if (p) { selected = Number(p.dataset.id); renderList(); renderDetail(); $('#detail').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   });
 
@@ -1387,6 +1571,7 @@ return module.exports; })();
     $('#setInterval').value = String(settings.interval);
     $('#setThreshold').value = settings.threshold;
     $('#setScanAll').checked = settings.scanAll;
+    $('#setAuto').checked = settings.radarAuto;
     $('#setSound').checked = settings.sound;
     $('#setSaver').checked = settings.saver;
     $('#dlg').showModal();
@@ -1395,6 +1580,7 @@ return module.exports; })();
     settings.interval = Number($('#setInterval').value);
     settings.threshold = Math.max(1, Number($('#setThreshold').value) || 8);
     settings.scanAll = $('#setScanAll').checked;
+    settings.radarAuto = $('#setAuto').checked;
     settings.sound = $('#setSound').checked;
     settings.saver = $('#setSaver').checked;
     save('lbd_settings', settings);
