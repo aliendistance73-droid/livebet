@@ -699,6 +699,145 @@ return module.exports; })();
     if (e >= 0) return 'w';
     return 'n';
   }
+  // ---- AUTO feed: fixtures, odds and injuries straight from API-Football (key stays in this browser)
+  const STATIC = DATA.matches.slice();
+  const LEAGUES = { 135: 'Serie A', 78: 'Bundesliga', 39: 'Premier League', 140: 'La Liga', 61: 'Ligue 1', 197: 'Super League', 199: 'Κύπελλο Ελλάδας', 2: 'Champions League', 3: 'Europa League', 848: 'Conference League', 81: 'DFB-Pokal', 48: 'Carabao Cup', 45: 'FA Cup', 137: 'Coppa Italia', 143: 'Copa del Rey', 66: 'Coupe de France', 40: 'Championship', 88: 'Eredivisie', 94: 'Primeira Liga' };
+  const AUTO_MAX = 14, AUTO_TTL = 30 * 60 * 1000;
+  let autoStatus = '', autoLoading = false, autoT = 0;
+  const lsGet = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } };
+
+  function prep(mt) {
+    mt.mu = cardsMu(mt);
+    const L = Math.floor(mt.mu) + 0.5;
+    const pu = poisCdf(Math.floor(L), mt.mu);
+    mt.markets.push(
+      { id: mt.id + '-cu', label: 'Κίτρινες Under ' + L, odds: null, book: 'χωρίς τιμή', p: pu, cards: true },
+      { id: mt.id + '-co', label: 'Κίτρινες Over ' + L, odds: null, book: 'χωρίς τιμή', p: 1 - pu, cards: true });
+  }
+  function setAuto(list, t) {
+    DATA.matches = list.concat(STATIC);
+    list.forEach((mt) => { if (!mt.mu) prep(mt); });
+    autoT = t || 0;
+  }
+
+  async function api(path) {
+    const key = lsGet('lbd_key');
+    if (!key) throw new Error('Βάλε το API key στις Settings');
+    const r = await fetch('https://v3.football.api-sports.io' + path, { headers: { 'x-apisports-key': key } });
+    if (!r.ok) throw new Error('API HTTP ' + r.status);
+    const j = await r.json();
+    const errs = j.errors && (Array.isArray(j.errors) ? j.errors : Object.values(j.errors));
+    if (errs && errs.length) throw new Error(errs.join('; '));
+    return j.response || [];
+  }
+  const median = (a) => { const s = a.slice().sort((x, y) => x - y), n = s.length; return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2; };
+
+  // groups: one object per bookmaker {outcome: odd}; returns {outcome: {p, odds, book}} or null
+  function consensus(groups, keys) {
+    const ok = groups.filter((g) => keys.every((k) => g.o[k] > 1));
+    if (ok.length < 3) return null;
+    const ps = {};
+    keys.forEach((k) => { ps[k] = []; });
+    ok.forEach((g) => {
+      const tot = keys.reduce((s, k) => s + 1 / g.o[k], 0);
+      keys.forEach((k) => ps[k].push(1 / g.o[k] / tot));
+    });
+    const out = {};
+    keys.forEach((k) => {
+      const p = median(ps[k]);
+      const med = 1 / p; // fair odds; ignore suspicious prices more than 12% above fair
+      let best = null;
+      ok.forEach((g) => { const o = g.o[k]; if (o <= med * 1.12 * 1.07 && (!best || o > best.odds)) best = { odds: o, book: g.book }; });
+      const panda = ok.find((g) => /panda/i.test(g.book));
+      if (panda) best = { odds: panda.o[k], book: 'Betpanda' };
+      out[k] = { p, odds: best ? best.odds : null, book: best ? best.book : '', n: ok.length };
+    });
+    return out;
+  }
+
+  function parseOdds(resp, home, away) {
+    const bms = (resp[0] && resp[0].bookmakers) || [];
+    const pick = (re, ex) => bms.map((b) => ({ book: b.name, bet: (b.bets || []).find((x) => re.test(x.name) && !(ex && ex.test(x.name))) })).filter((x) => x.bet);
+    const mk = [];
+    const add = (id, label, c) => { if (c && c.odds) mk.push({ id, label, odds: c.odds, book: c.book + ' · ' + c.n + ' bookmakers', p: c.p }); };
+    // 1X2
+    const w = pick(/^Match Winner$/).map((x) => { const o = {}; x.bet.values.forEach((v) => { o[v.value] = parseFloat(v.odd); }); return { book: x.book, o }; });
+    const c1 = consensus(w, ['Home', 'Draw', 'Away']);
+    let probs = null;
+    if (c1) { probs = [c1.Home.p, c1.Draw.p, c1.Away.p]; add('1', home + ' νίκη', c1.Home); add('x', 'Ισοπαλία', c1.Draw); add('2', away + ' νίκη', c1.Away); }
+    // lines helper
+    const lines = (bets, name) => {
+      const byLine = {};
+      bets.forEach((x) => x.bet.values.forEach((v) => {
+        const m = /^(Over|Under)\s+([\d.]+)$/i.exec(v.value);
+        if (!m) return;
+        const L = m[2]; byLine[L] = byLine[L] || {};
+        const g = (byLine[L][x.book] = byLine[L][x.book] || { book: x.book, o: {} });
+        g.o[m[1][0].toUpperCase() + m[1].slice(1).toLowerCase()] = parseFloat(v.odd);
+      }));
+      return Object.keys(byLine).map((L) => ({ L, c: consensus(Object.values(byLine[L]), ['Over', 'Under']) })).filter((x) => x.c);
+    };
+    const ou = lines(pick(/^Goals Over\/Under$/), 'g').find((x) => x.L === '2.5');
+    if (ou) { add('o25', 'Over 2.5 γκολ', ou.c.Over); add('u25', 'Under 2.5 γκολ', ou.c.Under); }
+    const bt = pick(/^Both Teams Score$/).map((x) => { const o = {}; x.bet.values.forEach((v) => { o[v.value] = parseFloat(v.odd); }); return { book: x.book, o }; });
+    const cb = consensus(bt, ['Yes', 'No']);
+    if (cb) { add('by', 'BTTS Ναι', cb.Yes); add('bn', 'BTTS Όχι', cb.No); }
+    const ex = /home|away|1st|2nd|first|second|player|team/i;
+    [['card', /card/i, 'Κάρτες'], ['corn', /corner/i, 'Κόρνερ']].forEach(([id, re, lab]) => {
+      const bets = pick(re, ex).filter((x) => /over|under/i.test(x.bet.name));
+      const ls = lines(bets, id);
+      if (!ls.length) return;
+      ls.sort((a, b) => Math.abs(a.c.Over.p - 0.5) - Math.abs(b.c.Over.p - 0.5));
+      const m = ls[0];
+      add(id + 'o', lab + ' Over ' + m.L, m.c.Over); add(id + 'u', lab + ' Under ' + m.L, m.c.Under);
+    });
+    return { mk, probs };
+  }
+
+  const athensDate = (d) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Athens' }).format(d);
+  async function loadAuto(force) {
+    if (autoLoading) return;
+    if (!lsGet('lbd_key')) { autoStatus = 'Βάλε το API key στις Settings για αυτόματα δεδομένα.'; renderTop(); return; }
+    const cached = lsGet('lbd_pm_auto');
+    if (!force && cached && Date.now() - cached.t < AUTO_TTL) { setAuto(cached.matches, cached.t); return; }
+    autoLoading = true; autoStatus = 'Φόρτωση από το API…'; renderTop();
+    try {
+      const now = new Date();
+      const days = [athensDate(now), athensDate(new Date(now.getTime() + 864e5))];
+      let fx = [];
+      for (const d of days) fx = fx.concat(await api('/fixtures?date=' + d + '&timezone=Europe/Athens'));
+      fx = fx.filter((f) => f.fixture.status.short === 'NS' && (LEAGUES[f.league.id] || (f.league.country === 'Greece' && /super league$|cup/i.test(f.league.name))))
+        .sort((a, b) => a.fixture.timestamp - b.fixture.timestamp).slice(0, AUTO_MAX);
+      const out = [];
+      let i = 0;
+      const worker = async () => {
+        while (i < fx.length) {
+          const f = fx[i++];
+          const home = f.teams.home.name, away = f.teams.away.name, id = 'a' + f.fixture.id;
+          let od = { mk: [], probs: null }, inj = [];
+          try { od = parseOdds(await api('/odds?fixture=' + f.fixture.id), home, away); } catch (e) { /* keep going */ }
+          try { inj = await api('/injuries?fixture=' + f.fixture.id); } catch (e) { /* keep going */ }
+          const by = (tn) => inj.filter((x) => x.team && x.team.name === tn).map((x) => x.player.name + (x.player.reason ? ' (' + x.player.reason + ')' : '')).slice(0, 8).join(', ') || 'καμία γνωστή';
+          const ko = new Date(f.fixture.date).toLocaleString('el-GR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Athens' });
+          out.push({ id, ts: f.fixture.timestamp, auto: true, ref: f.fixture.referee || 'δεν έχει ανακοινωθεί', rs: [], base: f.league.id === 135 ? 4.2 : 3.8,
+            comp: (LEAGUES[f.league.id] || f.league.name) + (f.league.round ? ' · ' + f.league.round.replace('Regular Season - ', 'Αγ. ') : ''), ko,
+            venue: [f.fixture.venue && f.fixture.venue.name, f.fixture.venue && f.fixture.venue.city].filter(Boolean).join(', ') || '—', home, away, form: '',
+            absences: home + ': ' + by(home) + ' · ' + away + ': ' + by(away),
+            text: od.mk.length ? 'Αυτόματα δεδομένα API: δίκαιες πιθανότητες από τη διάμεσο των bookmakers (χωρίς το περιθώριο τους) και η καλύτερη διαθέσιμη τιμή. Δεν περιλαμβάνει ειδήσεις ή δηλώσεις, μόνο τραυματίες/τιμωρίες από το API.' : 'Δεν βρέθηκαν αποδόσεις στο API για αυτόν τον αγώνα.',
+            probs: od.probs, markets: od.mk.map((m) => Object.assign(m, { id: id + '-' + m.id })) });
+        }
+      };
+      await Promise.all([worker(), worker(), worker()]);
+      out.sort((a, b) => a.ts - b.ts);
+      lsSet('lbd_pm_auto', { t: Date.now(), matches: out.map((m) => Object.assign({}, m, { mu: undefined })) });
+      setAuto(out, Date.now());
+      autoStatus = 'Ενημερώθηκε ' + new Date().toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Athens' }) + ' · ' + out.length + ' αγώνες · ' + (2 + out.length * 2) + ' αιτήματα API.';
+    } catch (e) { autoStatus = 'Σφάλμα API: ' + e.message; }
+    autoLoading = false; render();
+  }
+  (function restore() { const c = lsGet('lbd_pm_auto'); if (c && c.matches) { setAuto(c.matches, c.t); autoStatus = 'Αποθηκευμένα δεδομένα API (' + new Date(c.t).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Athens' }) + ').'; } })();
+
   const vLabel = { v: 'VALUE', w: 'WATCH', n: 'PASS', x: 'ΧΩΡΙΣ ΤΙΜΗ' };
   const pc = (x) => (x * 100).toFixed(0) + '%';
   const sg = (x) => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%';
@@ -727,7 +866,7 @@ return module.exports; })();
     const nV = priced.filter((x) => verdict(x.m) === 'v').length;
     const nW = priced.filter((x) => verdict(x.m) === 'w' && oddsOf(x.m) >= MIN_ODDS).length;
     const picks = priced.filter((x) => oddsOf(x.m) >= MIN_ODDS && edgeOf(x.m) >= 0).sort((a, b) => edgeOf(b.m) - edgeOf(a.m));
-    let h = '<h2>Σύνοψη</h2>';
+    let h = '<div class="row"><button type="button" id="pmAuto">⟳ Ενημέρωση από API</button></div><div class="note">' + esc(autoStatus) + '</div><h2 style="margin-top:10px">Σύνοψη</h2>';
     h += '<div class="txt">Ενημέρωση: ' + esc(DATA.updated) + '. Αναλύθηκαν ' + DATA.matches.length + ' αγώνες.</div>';
     h += '<div class="txt"><b>' + nV + '</b> στοιχήματα πληρούν το κριτήριο VALUE (απόδοση ≥ ' + MIN_ODDS.toFixed(2) + ' και πλεονέκτημα ≥ ' + (VALUE_EDGE * 100) + '%). ';
     h += '<b>' + nW + '</b> είναι οριακά θετικά (WATCH).</div>';
@@ -754,10 +893,10 @@ return module.exports; })();
       h += '<div class="pm"><h3>' + esc(mt.home) + ' – ' + esc(mt.away) + '</h3>' +
         '<div class="sub">' + esc(mt.comp) + ' · ' + esc(mt.ko) + ' · ' + esc(mt.venue) + '</div>' +
         '<div class="txt">' + esc(mt.text) + '</div>' +
-        '<div class="abs"><b>Φόρμα:</b> ' + esc(mt.form) + '</div>' +
+        (mt.form ? '<div class="abs"><b>Φόρμα:</b> ' + esc(mt.form) + '</div>' : '') +
         '<div class="abs"><b>Απουσίες:</b> ' + esc(mt.absences) + '</div>' +
         '<div class="abs"><b>Διαιτητής:</b> ' + esc(mt.ref) + ' · κίτρινες/αγώνα: ' + rsTxt + ' → αναμενόμενες ~' + mt.mu.toFixed(1) + '</div>' +
-        '<div class="abs"><b>Εκτίμησή μου (1-Χ-2):</b> ' + pc(mt.probs[0]) + ' · ' + pc(mt.probs[1]) + ' · ' + pc(mt.probs[2]) + '</div>';
+        (mt.probs ? '<div class="abs"><b>' + (mt.auto ? 'Αγορά (1-Χ-2)' : 'Εκτίμησή μου (1-Χ-2)') + ':</b> ' + pc(mt.probs[0]) + ' · ' + pc(mt.probs[1]) + ' · ' + pc(mt.probs[2]) + '</div>' : '');
       h += '<table><tr><th>Αγορά</th><th>Απόδ.</th><th>Π.</th><th>Edge / ελάχ.</th><th></th></tr>';
       mt.markets.forEach((m) => {
         const v = verdict(m), e = edgeOf(m), o = oddsOf(m);
@@ -841,7 +980,9 @@ return module.exports; })();
     if (e.target.id === 'pmMore') { showAll = !showAll; renderTriples(); }
   });
 
-  window.PreMatch = { render, DATA, legs, verdict, edgeOf };
+  document.addEventListener('click', (e) => { if (e.target.id === 'pmAuto') loadAuto(true); });
+  function ensureAuto() { if (lsGet('lbd_key') && !autoLoading && Date.now() - autoT > AUTO_TTL) loadAuto(false); }
+  window.PreMatch = { render() { render(); ensureAuto(); }, DATA, legs, verdict, edgeOf, parseOdds, consensus };
 })();
 
 </script>
