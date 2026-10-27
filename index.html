@@ -132,7 +132,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); }
   <section class="card" id="picksCard">
     <h2>Best picks right now</h2>
     <div id="picks" class="picks"><p class="muted">Loading…</p></div>
-    <p class="note">Picks come from the model, not from certainty. With your Betpanda odds typed in, a pick is a real <b>value</b> pick (edge = probability × odds − 1). Without odds it only shows the minimum odds worth taking.</p>
+    <p class="note">Picks come from the model, not from certainty. Each pick shows the minimum odds worth taking.</p>
   </section>
 
   <div id="layout">
@@ -153,7 +153,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); }
 </main>
 
 <footer>
-  Statistical estimates only — no guarantee of profit and not financial advice. Always check the real price on Betpanda before betting, and only stake what you can afford to lose.
+  Statistical estimates only — no guarantee of profit and not financial advice. Always check the real price before betting, and only stake what you can afford to lose.
 </footer>
 
 <dialog id="dlg">
@@ -661,7 +661,7 @@ return module.exports; })();
           { id: 'fulham-1', label: 'Fulham νίκη', odds: 1.80, book: 'δεν αναφέρεται', p: 0.50 },
           { id: 'fulham-btts-no', label: 'BTTS Όχι', odds: 2.19, book: 'δεν αναφέρεται', p: 0.42 } ] }
     ],
-    notCovered: 'Οι διαιτητές των Pokal και της Serie A είναι επιβεβαιωμένοι· στα Carabao Cup δεν έχουν ανακοινωθεί. Η αγορά καρτών δεν έχει τιμές από τις πηγές μου, οπότε δείχνω δίκαιη απόδοση και ελάχιστη απόδοση (γράψε την τιμή της Betpanda για να δεις το edge). Δεν κατάφερα να βρω αξιόπιστα δεδομένα για Everton–Newcastle και Jeddeloh–Hertha, οπότε δεν τους αναλύω. Στη Super League δεν υπάρχουν αγώνες μέχρι 31/10–1/11.'
+    notCovered: 'Οι διαιτητές των Pokal και της Serie A είναι επιβεβαιωμένοι· στα Carabao Cup δεν έχουν ανακοινωθεί. Η αγορά καρτών δεν έχει τιμές από τις πηγές μου, οπότε δείχνω δίκαιη απόδοση και ελάχιστη απόδοση. Δεν κατάφερα να βρω αξιόπιστα δεδομένα για Everton–Newcastle και Jeddeloh–Hertha, οπότε δεν τους αναλύω. Στη Super League δεν υπάρχουν αγώνες μέχρι 31/10–1/11.'
   };
 
   const MIN_ODDS = 1.30, VALUE_ODDS = 1.40, VALUE_EDGE = 0.05, LEG_MIN = 1.40;
@@ -749,8 +749,6 @@ return module.exports; })();
       const med = 1 / p; // fair odds; ignore suspicious prices more than 12% above fair
       let best = null;
       ok.forEach((g) => { const o = g.o[k]; if (o <= med * 1.12 * 1.07 && (!best || o > best.odds)) best = { odds: o, book: g.book }; });
-      const panda = ok.find((g) => /panda/i.test(g.book));
-      if (panda) best = { odds: panda.o[k], book: 'Betpanda' };
       out[k] = { p, odds: best ? best.odds : null, book: best ? best.book : '', n: ok.length };
     });
     return out;
@@ -882,7 +880,7 @@ return module.exports; })();
     } else {
       h += '<div class="txt">Δεν βρήκα κανένα στοίχημα με απόδοση ≥ 1.30 και θετικό πλεονέκτημα.</div>';
     }
-    h += '<p class="note">Οι αποδόσεις είναι ενδεικτικές από βρετανικούς bookmakers (Betfred, William Hill, Matchbook, Smarkets κ.ά.), <b>όχι από την Betpanda</b>. Οι πιθανότητες είναι δικές μου εκτιμήσεις, όχι εγγυήσεις. Οι πηγές έχουν αντιφάσεις· ελέγξτε ενδεκάδες και τιμές πριν παίξετε. Γράψε την πραγματική απόδοση της Betpanda σε μια αγορά για να ξαναϋπολογιστούν όλα, και οι τριάδες. Οι κάρτες υπολογίζονται από τον μέσο όρο κίτρινων του διαιτητή (τραβηγμένο προς τον μέσο όρο του πρωταθλήματος) με κατανομή Poisson· δεν λαμβάνουν υπόψη τη συμπεριφορά των ομάδων.</p>';
+    h += '<p class="note">Οι αποδόσεις είναι ενδεικτικές από βρετανικούς bookmakers (Betfred, William Hill, Matchbook, Smarkets κ.ά.), <b>όχι από τη δική σου εταιρεία</b>. Οι πιθανότητες είναι δικές μου εκτιμήσεις, όχι εγγυήσεις. Οι πηγές έχουν αντιφάσεις· ελέγξτε ενδεκάδες και τιμές πριν παίξετε. Γράψε την πραγματική απόδοση που βρίσκεις σε μια αγορά για να ξαναϋπολογιστούν όλα, και οι τριάδες. Οι κάρτες υπολογίζονται από τον μέσο όρο κίτρινων του διαιτητή (τραβηγμένο προς τον μέσο όρο του πρωταθλήματος) με κατανομή Poisson· δεν λαμβάνουν υπόψη τη συμπεριφορά των ομάδων.</p>';
     $('#preTop').innerHTML = h;
   }
 
@@ -943,7 +941,7 @@ return module.exports; })();
   }
 
   const METHOD = [
-    ['ok', 'Τιμές αγοράς (consensus)', 'Αφαιρώ το περιθώριο των bookmakers και βγάζω «δίκαιες» πιθανότητες. Έγινε για όλους τους αγώνες, αλλά μόνο από βρετανικές εταιρείες, όχι Betpanda.'],
+    ['ok', 'Τιμές αγοράς (consensus)', 'Αφαιρώ το περιθώριο των bookmakers και βγάζω «δίκαιες» πιθανότητες. Έγινε για όλους τους αγώνες, αλλά μόνο από βρετανικές εταιρείες.'],
     ['ok', 'Φόρμα και βαθμολογία', 'Τελευταία 5 αγώνες, θέση, γκολ υπέρ/κατά. Έγινε, αλλά οι πηγές έχουν αντιφάσεις.'],
     ['ok', 'Απουσίες και τιμωρίες', 'Ιδίως τερματοφύλακας και επιθετικοί. Έγινε από τις διαθέσιμες πηγές.'],
     ['ok', 'Διαιτητής και κάρτες', 'Μέσος όρος κίτρινων ανά αγώνα, κατεβασμένος προς τον μέσο όρο του πρωταθλήματος. Έγινε για 9 από 11 αγώνες.'],
@@ -957,7 +955,7 @@ return module.exports; })();
     ['no', 'Κόπωση και πρόγραμμα', 'Αγώνες Ευρώπης μέσα στη βδομάδα, ταξίδια, μέρες ανάπαυσης.'],
     ['rule', 'Συσχέτιση επιλογών', 'Δεν βάζω στην ίδια τριάδα επιλογές του ίδιου αγώνα. Οι αγώνες θεωρούνται ανεξάρτητοι.'],
     ['rule', 'Διαχείριση κεφαλαίου', 'Μικρό σταθερό ποσό ανά στοίχημα (π.χ. 1–2% του κεφαλαίου) και ποτέ κυνήγι απωλειών. Οι τριάδες έχουν μεγάλη διακύμανση.'],
-    ['rule', 'Σύγκριση εταιρειών', 'Παίζω μόνο αν η απόδοση της Betpanda είναι ≥ της «ελάχιστης απόδοσης» που γράφω.']
+    ['rule', 'Σύγκριση εταιρειών', 'Παίζω μόνο αν η απόδοση που βρίσκεις είναι ≥ της «ελάχιστης απόδοσης» που γράφω.']
   ];
   function renderMethod() {
     const ic = { ok: '✓', no: '✗', rule: '•' };
@@ -1107,7 +1105,7 @@ return module.exports; })();
       html += `<div class="pick" data-id="${c.f.fixture.id}"><div class="t">${esc(nameOf(c.f))}<span class="tag ${cl}">${ct}</span></div>
         <div class="m">${c.an.elapsed}' · ${c.f.goals.home ?? 0}-${c.f.goals.away ?? 0}${tally(c)}</div>
         <div class="big">${esc(c.mk.label)} — model ${pct(c.p)}</div>
-        <div class="m">Worth it only if Betpanda offers ≥ <b>${c.minOdds.toFixed(2)}</b> · ${esc(reasonText(c.f, c.an))}</div></div>`;
+        <div class="m">Worth it only if the bookmaker offers ≥ <b>${c.minOdds.toFixed(2)}</b> · ${esc(reasonText(c.f, c.an))}</div></div>`;
     }
     box.innerHTML = html || '<p class="muted">No clear pick at the moment. That is a valid answer — not every match offers value.</p>';
   }
@@ -1151,17 +1149,25 @@ return module.exports; })();
     if (an.haveStats) {
       h += `<div class="bars sec">${bar('Pressure index', an.pressure.home, an.pressure.away)}${bar('Shots on target', an.home.sot, an.away.sot)}${bar('Total shots', an.home.shots, an.away.shots)}${bar('Corners', an.home.corners, an.away.corners)}${bar('Possession %', an.home.poss, an.away.poss)}${bar('Yellow cards', an.home.yellow, an.away.yellow)}${bar('Red cards', an.home.red, an.away.red)}${an.home.xgReal ? bar('xG', +an.home.xg.toFixed(2), +an.away.xg.toFixed(2)) : ''}</div>`;
     }
-    const o = oddsStore[id] || {};
-    h += `<div class="sec"><h2>Markets — type the Betpanda odds</h2><table><tr><th>Market</th><th>Model</th><th>Fair</th><th>Odds</th><th>Edge</th></tr>`;
+    const ranked = [];
     for (const mk of MARKETS) {
       const p = Model.marketProb(an, mk.market, mk.line);
-      if (p == null || p < 0.02 || p > 0.985) continue;
-      const odds = parseFloat(o[mk.k]);
-      const e = Model.edge(p, odds);
-      const cls = e == null ? '' : e >= settings.threshold / 100 ? 'val' : '';
-      h += `<tr class="${cls}"><td>${esc(mk.label)}</td><td>${pct(p)}</td><td>${od(1 / p)}</td><td><input inputmode="decimal" data-odds="${mk.k}" value="${o[mk.k] ?? ''}" placeholder="—"></td><td class="edge ${e == null ? '' : e > 0 ? 'pos' : 'neg'}">${e == null ? '' : (e > 0 ? '+' : '') + (e * 100).toFixed(1) + '%'}</td></tr>`;
+      if (p == null || p < 0.55 || p > 0.80) continue;
+      const kind = mk.market.startsWith('btts') ? 'btts' : mk.market.startsWith('h1') ? 'h1' : mk.market.startsWith('c') ? 'corners' : mk.market.startsWith('ng') ? 'ng' : 'ou';
+      ranked.push({ mk, p, kind });
     }
-    h += '</table></div>';
+    ranked.sort((x, y) => y.p - x.p);
+    const seenK = {};
+    const best = ranked.filter((r) => { seenK[r.kind] = (seenK[r.kind] || 0) + 1; return seenK[r.kind] <= 2; }).slice(0, 6);
+    h += '<div class="sec"><h2>Most likely bets right now</h2>';
+    if (!best.length) h += '<p class="muted">No market is clearly likely at the moment. That is a valid answer.</p>';
+    for (const r of best) {
+      const fair = 1 / r.p, minO = fair * 1.06;
+      const tl = (r.mk.market === 'cover' || r.mk.market === 'cunder') && an.corners ? ` · corners so far: <b>${an.corners.have}</b> (${an.home.corners}-${an.away.corners})` : '';
+      h += `<div class="pick"><div class="big">${esc(r.mk.label)} — ${pct(r.p)}</div>
+        <div class="m">Fair odds ${od(fair)} · worth it only if the bookmaker offers ≥ <b>${minO.toFixed(2)}</b>${minO < 1.3 ? ' (low payout)' : ''}${tl}</div></div>`;
+    }
+    h += '<p class="note">Model probabilities only. Take a bet only if the real bookmaker price is at or above the minimum shown.</p></div>';
     const ev = (details[id] && details[id].events) || [];
     if (ev.length) {
       h += '<div class="sec events"><h2>Events</h2>' + ev.filter((e) => e.type === 'Goal' || e.type === 'Card').map((e) => {
