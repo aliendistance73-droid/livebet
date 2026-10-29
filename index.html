@@ -524,7 +524,7 @@ return module.exports; })();
 // clearly dominating, then proposes the most probable markets (never a long shot).
 window.Radar = (function () {
   const WINDOW = 10;       // game minutes looked back
-  const MIN_SPAN = 5;      // need at least this many minutes of history
+  const MIN_SPAN = 3;      // need at least this many minutes of history
   const TRIGGER = 0.40;    // pressing team's estimated xG gained in the window
   const DOMINANCE = 2.2;   // ...and at least this multiple of the opponent's
   const COOLDOWN = 8;      // game minutes between alerts for same match
@@ -559,9 +559,14 @@ window.Radar = (function () {
     st.hist = st.hist.filter((s) => s.e >= e - 25);
     const base = window_(st, now);
     const span = e - base.e;
-    const dh = diff(now.h, base.h), da = diff(now.a, base.a);
+    let dh = diff(now.h, base.h), da = diff(now.a, base.a);
+    let est = false;
+    if (span < MIN_SPAN && e >= 12) { // no history yet: scale the whole-match rate to the window
+      const k = Math.min(WINDOW, e) / e, sc = (x) => ({ sot: x.sot * k, shots: x.shots * k, corners: x.corners * k, inbox: (x.inbox || 0) * k });
+      dh = sc(now.h); da = sc(now.a); est = true;
+    }
     const sh = xgOf(dh), sa = xgOf(da);
-    const out = { span, dh, da, sh, sa, hot: null, calibrating: span < MIN_SPAN };
+    const out = { span: est ? Math.min(WINDOW, e) : span, dh, da, sh, sa, hot: null, calibrating: span < MIN_SPAN && !est, est };
     if (!out.calibrating) {
       if (sh >= TRIGGER && sh >= DOMINANCE * sa && dh.shots >= 3) out.hot = 'home';
       else if (sa >= TRIGGER && sa >= DOMINANCE * sh && da.shots >= 3) out.hot = 'away';
@@ -617,7 +622,7 @@ window.Radar = (function () {
 
   function evidence(f, m, side) {
     const t = side === 'home' ? m.dh : m.da, o = side === 'home' ? m.da : m.dh;
-    return `τελευταία ${Math.round(m.span)}': σουτ ${t.shots}-${o.shots} · στο στόχο ${t.sot}-${o.sot} · κόρνερ ${t.corners}-${o.corners}`;
+    return `${m.est ? 'ρυθμός αγώνα ανά ~' : 'τελευταία '}${Math.round(m.span)}': σουτ ${t.shots}-${o.shots} · στο στόχο ${t.sot}-${o.sot} · κόρνερ ${t.corners}-${o.corners}`;
   }
 
   // Called after each stats refresh. Returns list of newly created alerts.
@@ -666,7 +671,7 @@ window.Radar = (function () {
     const w = Math.min(50, Math.abs(lead) * 50);
     const cls = lead >= 0 ? 'h' : 'a';
     const fill = `<div class="fill ${cls}" style="${lead >= 0 ? 'left' : 'right'}:50%;width:${w}%"></div>`;
-    const lab = useWin ? `τελευταία ${Math.round(m.span)}'` : 'σύνολο αγώνα (μαζεύω δεδομένα)';
+    const lab = m.est ? `ρυθμός αγώνα ανά ~${Math.round(m.span)}' (εκτίμηση)` : useWin ? `τελευταία ${Math.round(m.span)}'` : 'σύνολο αγώνα (μαζεύω δεδομένα)';
     return { net, html: `<div class="brow${m.hot ? ' hotrow' : ''}" data-id="${f.fixture.id}">
       <div class="bt"><span class="bm">${f.fixture.status.elapsed}'</span> <b>${esc(f.teams.home.name)}</b> ${f.goals.home ?? 0}-${f.goals.away ?? 0} <b>${esc(f.teams.away.name)}</b>${m.hot ? ' 🔥' : ''}</div>
       <div class="bar"><span class="tick"></span>${fill}</div>
@@ -1235,7 +1240,8 @@ window.Radar = (function () {
   const LS = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch { return d; } };
   const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
-  let settings = Object.assign({ interval: 60, threshold: 8, scanAll: false, sound: true, saver: false, radarAuto: true, boardAll: false }, LS('lbd_settings', {}));
+  let settings = Object.assign({ interval: 30, threshold: 8, scanAll: false, sound: true, saver: false, radarAuto: true, boardAll: false }, LS('lbd_settings', {}));
+  if (settings.interval > 30 && !settings.v2) { settings.interval = 30; settings.v2 = true; save('lbd_settings', settings); }
   let tracked = new Set(LS('lbd_tracked', []));
   let oddsStore = LS('lbd_odds', {});
   let fixtures = [];
@@ -1509,14 +1515,14 @@ window.Radar = (function () {
   async function fetchLive() {
     if (!direct) return getJSON('/api/live');
     if (useDemo()) return { mode: 'demo', quota: {}, fixtures: window.Demo.liveList() };
-    const fixtures = await directGet('/fixtures?live=all', 55000);
+    const fixtures = await directGet('/fixtures?live=all', 25000);
     return { mode: 'live', quota: status.quota, fixtures };
   }
 
   async function fetchMatch(id) {
     if (!direct) return getJSON('/api/match?id=' + id);
     if (useDemo()) { const d = window.Demo.matchData(id); if (!d) throw new Error('unknown demo match'); return { mode: 'demo', quota: {}, statistics: d.statistics, events: d.events }; }
-    const statistics = await directGet('/fixtures/statistics?fixture=' + id, 50000);
+    const statistics = await directGet('/fixtures/statistics?fixture=' + id, 25000);
     const events = [];
     return { mode: 'live', quota: status.quota, statistics, events };
   }
