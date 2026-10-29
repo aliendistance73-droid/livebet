@@ -622,7 +622,8 @@ window.Radar = (function () {
 
   function evidence(f, m, side) {
     const t = side === 'home' ? m.dh : m.da, o = side === 'home' ? m.da : m.dh;
-    return `${m.est ? 'ρυθμός αγώνα ανά ~' : 'τελευταία '}${Math.round(m.span)}': σουτ ${t.shots}-${o.shots} · στο στόχο ${t.sot}-${o.sot} · κόρνερ ${t.corners}-${o.corners}`;
+    const q = (n) => (Math.round(n * 10) / 10).toString();
+    return `${m.est ? 'ρυθμός αγώνα ανά ~' : 'τελευταία '}${Math.round(m.span)}': σουτ ${q(t.shots)}-${q(o.shots)} · στο στόχο ${q(t.sot)}-${q(o.sot)} · κόρνερ ${q(t.corners)}-${q(o.corners)}`;
   }
 
   // Called after each stats refresh. Returns list of newly created alerts.
@@ -661,6 +662,7 @@ window.Radar = (function () {
     return cards.join('') || '<p class="muted">Καμία έντονη πίεση αυτή τη στιγμή. Θα σε ειδοποιήσω όταν εμφανιστεί.</p>';
   }
 
+  const r1 = (n) => (Math.round(n * 10) / 10).toString();
   function bar(f, m) {
     const useWin = !m.calibrating;
     const dh = useWin ? m.dh : m.cumH, da = useWin ? m.da : m.cumA;
@@ -675,7 +677,7 @@ window.Radar = (function () {
     return { net, html: `<div class="brow${m.hot ? ' hotrow' : ''}" data-id="${f.fixture.id}">
       <div class="bt"><span class="bm">${f.fixture.status.elapsed}'</span> <b>${esc(f.teams.home.name)}</b> ${f.goals.home ?? 0}-${f.goals.away ?? 0} <b>${esc(f.teams.away.name)}</b>${m.hot ? ' 🔥' : ''}</div>
       <div class="bar"><span class="tick"></span>${fill}</div>
-      <div class="bs">${lab}: σουτ ${dh.shots}-${da.shots} · στόχο ${dh.sot}-${da.sot} · κόρνερ ${dh.corners}-${da.corners} · εντός περιοχής ${dh.inbox || 0}-${da.inbox || 0}</div></div>` };
+      <div class="bs">${lab}: σουτ ${r1(dh.shots)}-${r1(da.shots)} · στόχο ${r1(dh.sot)}-${r1(da.sot)} · κόρνερ ${r1(dh.corners)}-${r1(da.corners)} · εντός περιοχής ${r1(dh.inbox || 0)}-${r1(da.inbox || 0)}</div></div>` };
   }
   function renderBoard(fixtures) {
     const rows = [];
