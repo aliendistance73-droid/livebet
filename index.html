@@ -154,7 +154,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); }
     <div id="radarHot"></div>
     <div class="seg"><button class="tabbtn on" data-bm="star">★ Μόνο αστέρια</button><button class="tabbtn" data-bm="all">Όλοι οι live</button></div>
     <div id="radarBoard"></div>
-    <p class="note">Οι μπάρες γεμίζουν προς την ομάδα που πιέζει (σουτ, στόχο, κόρνερ, εντός περιοχής στα τελευταία ~10'· το API δεν δίνει «επικίνδυνες επιθέσεις»). Πρώτος ο αγώνας με τη μεγαλύτερη πίεση. Ειδοποιώ όταν η πίεση γίνει έντονη. Προτείνω μόνο πιθανές αγορές και την ελάχιστη απόδοση που αξίζει (≥1.30). Κράτα την εφαρμογή ανοιχτή και την οθόνη αναμμένη.</p>
+    <p class="note">Οι μπάρες γεμίζουν προς την ομάδα που πιέζει (σουτ, στόχο, κόρνερ, εντός περιοχής στα τελευταία ~5'· το API δεν δίνει «επικίνδυνες επιθέσεις»). Πρώτος ο αγώνας με τη μεγαλύτερη πίεση. Ειδοποιώ όταν η πίεση γίνει έντονη. Προτείνω μόνο πιθανές αγορές και την ελάχιστη απόδοση που αξίζει (≥1.30). Κράτα την εφαρμογή ανοιχτή και την οθόνη αναμμένη.</p>
   </section>
   <section class="card"><h2>Ιστορικό ειδοποιήσεων</h2><div id="radarFeed"></div></section>
 
@@ -523,11 +523,11 @@ return module.exports; })();
 // Pressure radar: tracks how stats change over the last ~10 game minutes and flags a team that is
 // clearly dominating, then proposes the most probable markets (never a long shot).
 window.Radar = (function () {
-  const WINDOW = 10;       // game minutes looked back
-  const MIN_SPAN = 3;      // need at least this many minutes of history
-  const TRIGGER = 0.40;    // pressing team's estimated xG gained in the window
+  const WINDOW = 5;        // game minutes looked back
+  const MIN_SPAN = 2;      // need at least this many minutes of history
+  const TRIGGER = 0.25;    // pressing team's estimated xG gained in the window
   const DOMINANCE = 2.2;   // ...and at least this multiple of the opponent's
-  const COOLDOWN = 8;      // game minutes between alerts for same match
+  const COOLDOWN = 5;      // game minutes between alerts for same match
   const P_MIN = 0.5, P_MAX = 0.77; // => minimum playable odds always >= 1.30
   const state = {};        // fixture id -> {hist:[], last:null, alertAt:-99}
   let feed = [];
@@ -556,7 +556,7 @@ window.Radar = (function () {
     const now = snap(an, e);
     if (st.hist.length && e < st.hist[st.hist.length - 1].e) st.hist = []; // new half / reset
     if (!st.hist.length || e > st.hist[st.hist.length - 1].e) st.hist.push(now);
-    st.hist = st.hist.filter((s) => s.e >= e - 25);
+    st.hist = st.hist.filter((s) => s.e >= e - 15);
     const base = window_(st, now);
     const span = e - base.e;
     let dh = diff(now.h, base.h), da = diff(now.a, base.a);
@@ -568,8 +568,8 @@ window.Radar = (function () {
     const sh = xgOf(dh), sa = xgOf(da);
     const out = { span: est ? Math.min(WINDOW, e) : span, dh, da, sh, sa, hot: null, calibrating: span < MIN_SPAN && !est, est };
     if (!out.calibrating) {
-      if (sh >= TRIGGER && sh >= DOMINANCE * sa && dh.shots >= 3) out.hot = 'home';
-      else if (sa >= TRIGGER && sa >= DOMINANCE * sh && da.shots >= 3) out.hot = 'away';
+      if (sh >= TRIGGER && sh >= DOMINANCE * sa && dh.shots >= 2) out.hot = 'home';
+      else if (sa >= TRIGGER && sa >= DOMINANCE * sh && da.shots >= 2) out.hot = 'away';
     }
     out.cumH = now.h; out.cumA = now.a; out.e = e;
     st.m = out;
