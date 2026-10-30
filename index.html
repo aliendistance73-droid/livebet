@@ -621,9 +621,9 @@ window.Radar = (function () {
   }
 
   function evidence(f, m, side) {
-    const t = side === 'home' ? m.dh : m.da, o = side === 'home' ? m.da : m.dh;
+    const t = m.est ? (side === 'home' ? m.cumH : m.cumA) : (side === 'home' ? m.dh : m.da), o = m.est ? (side === 'home' ? m.cumA : m.cumH) : (side === 'home' ? m.da : m.dh);
     const q = (n) => (Math.round(n * 10) / 10).toString();
-    return `${m.est ? 'ρυθμός αγώνα ανά ~' : 'τελευταία '}${Math.round(m.span)}': σουτ ${q(t.shots)}-${q(o.shots)} · στο στόχο ${q(t.sot)}-${q(o.sot)} · κόρνερ ${q(t.corners)}-${q(o.corners)}`;
+    return `${m.est ? 'σύνολο αγώνα ' + m.e + '' : 'τελευταία ' + Math.round(m.span)}': σουτ ${q(t.shots)}-${q(o.shots)} · στο στόχο ${q(t.sot)}-${q(o.sot)} · κόρνερ ${q(t.corners)}-${q(o.corners)}`;
   }
 
   // Called after each stats refresh. Returns list of newly created alerts.
@@ -664,16 +664,19 @@ window.Radar = (function () {
 
   const r1 = (n) => (Math.round(n * 10) / 10).toString();
   function bar(f, m) {
-    const useWin = !m.calibrating;
-    const dh = useWin ? m.dh : m.cumH, da = useWin ? m.da : m.cumA;
-    const sh = xgOf(dh), sa = xgOf(da), tot = sh + sa;
+    const useWin = !m.calibrating && !m.est;
+    // bar always from the (estimated or real) window, but the text shows real counts
+    const eh = m.dh, ea = m.da;
+    const sh = xgOf(eh), sa = xgOf(ea), tot = sh + sa;
     const share = tot > 0 ? sh / tot : 0.5;           // 0..1 towards home
-    const lead = (share - 0.5) * 2;                    // -1..1
+    const conf = Math.min(1, tot / 0.5);              // little data => short bar
+    const lead = (share - 0.5) * 2 * conf;            // -1..1
     const net = Math.abs(sh - sa);
     const w = Math.min(50, Math.abs(lead) * 50);
     const cls = lead >= 0 ? 'h' : 'a';
     const fill = `<div class="fill ${cls}" style="${lead >= 0 ? 'left' : 'right'}:50%;width:${w}%"></div>`;
-    const lab = m.est ? `ρυθμός αγώνα ανά ~${Math.round(m.span)}' (εκτίμηση)` : useWin ? `τελευταία ${Math.round(m.span)}'` : 'σύνολο αγώνα (μαζεύω δεδομένα)';
+    const dh = useWin ? m.dh : m.cumH, da = useWin ? m.da : m.cumA;
+    const lab = useWin ? `τελευταία ${Math.round(m.span)}'` : `σύνολο αγώνα (${m.e}')`;
     return { net, html: `<div class="brow${m.hot ? ' hotrow' : ''}" data-id="${f.fixture.id}">
       <div class="bt"><span class="bm">${f.fixture.status.elapsed}'</span> <b>${esc(f.teams.home.name)}</b> ${f.goals.home ?? 0}-${f.goals.away ?? 0} <b>${esc(f.teams.away.name)}</b>${m.hot ? ' 🔥' : ''}</div>
       <div class="bar"><span class="tick"></span>${fill}</div>
