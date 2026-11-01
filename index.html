@@ -194,7 +194,6 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); }
       <input id="setThreshold" type="number" min="1" max="50" step="1">
     </label>
     <label class="inline"><input id="setAuto" type="checkbox"> Ραντάρ: αυτόματη παρακολούθηση μεγάλων λιγκών + Ελλάδας</label>
-    <label class="inline"><input id="setScanAll" type="checkbox"> Ανάλυση όλων των live αγώνων (max 12) — περισσότερα requests</label>
     <label class="inline"><input id="setSaver" type="checkbox"> Data saver (recommended for the free API plan): list every 2 min, stats every 3 min, no event feed</label>
     <label class="inline"><input id="setSound" type="checkbox"> Sound alert on value pick</label>
     <div class="row"><button type="button" id="btnNotif">Enable browser notifications</button></div>
@@ -1245,7 +1244,7 @@ window.Radar = (function () {
   const LS = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch { return d; } };
   const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
-  let settings = Object.assign({ interval: 30, threshold: 8, scanAll: false, sound: true, saver: false, radarAuto: true, boardAll: false }, LS('lbd_settings', {}));
+  let settings = Object.assign({ interval: 30, threshold: 8, sound: true, saver: false, radarAuto: true, boardAll: false }, LS('lbd_settings', {}));
   if (settings.interval > 30 && !settings.v2) { settings.interval = 30; settings.v2 = true; save('lbd_settings', settings); }
   let tracked = new Set(LS('lbd_tracked', []));
   let oddsStore = LS('lbd_odds', {});
@@ -1471,15 +1470,28 @@ window.Radar = (function () {
     try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch {}
     try { if ('Notification' in window && Notification.permission === 'granted') new Notification('🔥 Πίεση: ' + al.team, { body: msg }); } catch {}
   }
+  let radarIds = new Set();
+  // What the radar shows: in star mode ONLY starred matches; in "all" mode the matches monitored in the last refresh.
+  // Matches that were measured earlier (e.g. before switching modes) are never shown outside this filter.
+  function radarFixtures() {
+    return settings.boardAll
+      ? fixtures.filter((f) => radarIds.has(f.fixture.id))
+      : fixtures.filter((f) => tracked.has(f.fixture.id));
+  }
   function renderRadar() {
     const hot = $('#radarHot'), feed = $('#radarFeed'), st = $('#radarStatus');
     if (!hot) return;
-    hot.innerHTML = Radar.renderHot(fixtures);
-    $('#radarBoard').innerHTML = Radar.renderBoard(fixtures);
+    const rf = radarFixtures();
+    hot.innerHTML = Radar.renderHot(rf);
+    $('#radarBoard').innerHTML = Radar.renderBoard(rf);
     document.querySelectorAll('[data-bm]').forEach((b) => b.classList.toggle('on', (b.dataset.bm === 'all') === !!settings.boardAll));
     feed.innerHTML = Radar.renderFeed();
-    const m = Radar.monitoring(fixtures);
-    st.textContent = !fixtures.length ? 'Δεν υπάρχουν live αγώνες αυτή τη στιγμή.' : m.n ? `Παρακολουθώ ${m.n} αγώνες${m.cal ? ' · ' + m.cal + ' ακόμα μαζεύουν δεδομένα (χρειάζονται ~5\' ανοιχτή εφαρμογή)' : ''}.` : 'Περιμένω στατιστικά από τους αγώνες των μεγάλων λιγκών…';
+    const m = Radar.monitoring(rf);
+    const starsLive = fixtures.filter((f) => tracked.has(f.fixture.id)).length;
+    st.textContent = !fixtures.length ? 'Δεν υπάρχουν live αγώνες αυτή τη στιγμή.'
+      : (!settings.boardAll && !starsLive) ? 'Κανένας από τους αγώνες με ★ δεν παίζει live τώρα. Βάλε ★ σε live αγώνα από τη λίστα παρακάτω ή διάλεξε «Όλοι οι live».'
+      : m.n ? `Παρακολουθώ ${m.n} ${settings.boardAll ? 'αγώνες (όλοι οι live)' : 'αγώνες με ★'}${m.cal ? ' · ' + m.cal + ' ακόμα μαζεύουν δεδομένα (χρειάζονται ~5\' ανοιχτή εφαρμογή)' : ''}.`
+      : 'Περιμένω στατιστικά από τους αγώνες…';
   }
 
   function checkAlerts() {
@@ -1560,9 +1572,17 @@ window.Radar = (function () {
       if (selected && !ids.has(selected)) selected = null;
       if (!selected && fixtures.length) selected = fixtures[0].fixture.id;
 
-      const scanAll = settings.scanAll || live.mode === 'demo';
-      let targets = (scanAll || settings.boardAll) ? fixtures.slice(0, 15) : fixtures.filter((f) => tracked.has(f.fixture.id));
+      const allMode = settings.boardAll || live.mode === 'demo';
+      let targets;
+      if (allMode) {
+        // "all live": starred first, then big leagues, then the rest (max 15)
+        const prio = (f) => (tracked.has(f.fixture.id) ? 0 : RADAR_LEAGUES.has(f.league.id) ? 1 : 2);
+        targets = [...fixtures].sort((a, b) => prio(a) - prio(b)).slice(0, 15);
+      } else {
+        targets = fixtures.filter((f) => tracked.has(f.fixture.id));
+      }
       targets = targets.filter((f) => !['HT', 'BT'].includes((f.fixture.status || {}).short));
+      radarIds = new Set(targets.map((f) => f.fixture.id));
       if (selected && !targets.some((f) => f.fixture.id === selected) && tracked.has(selected)) targets.push(fixtures.find((f) => f.fixture.id === selected));
       await Promise.all(targets.map(async (f) => {
         try {
@@ -1622,7 +1642,6 @@ window.Radar = (function () {
   $('#btnSettings').onclick = () => {
     $('#setInterval').value = String(settings.interval);
     $('#setThreshold').value = settings.threshold;
-    $('#setScanAll').checked = settings.scanAll;
     $('#setAuto').checked = settings.radarAuto;
     $('#setSound').checked = settings.sound;
     $('#setSaver').checked = settings.saver;
@@ -1631,7 +1650,6 @@ window.Radar = (function () {
   $('#dlg').addEventListener('close', () => {
     settings.interval = Number($('#setInterval').value);
     settings.threshold = Math.max(1, Number($('#setThreshold').value) || 8);
-    settings.scanAll = $('#setScanAll').checked;
     settings.radarAuto = $('#setAuto').checked;
     settings.sound = $('#setSound').checked;
     settings.saver = $('#setSaver').checked;
