@@ -1,0 +1,2488 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1730">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Simulator">
+<title>Football Simulator</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230e1730'/%3E%3Ccircle cx='32' cy='32' r='19' fill='none' stroke='%2339d98a' stroke-width='4'/%3E%3Cpath d='M32 20l9 7-3 11H26l-3-11z' fill='%2339d98a'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230e1730'/%3E%3Ccircle cx='32' cy='32' r='19' fill='none' stroke='%2339d98a' stroke-width='4'/%3E%3Cpath d='M32 20l9 7-3 11H26l-3-11z' fill='%2339d98a'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #0b1220; --panel: #121b2e; --panel2: #18243d; --line: #243355; --text: #e6edf7; --muted: #8fa0bf;
+  --green: #22c55e; --red: #ef4444; --amber: #f59e0b; --blue: #4f8cff;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-block: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); background: #0e1730; border-bottom: 1px solid var(--line); }
+.brand { font-weight: 700; letter-spacing: .2px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+.chip { padding: 2px 9px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); font-size: 12px; }
+.chip.live { color: var(--green); border-color: #1d6b3a; }
+.chip.demo { color: var(--amber); border-color: #7a5410; }
+.muted { color: var(--muted); }
+button { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; font: inherit; cursor: pointer; }
+button:hover { border-color: var(--blue); }
+main { padding-block: 12px 20px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); max-width: 1280px; margin: 0 auto; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
+h2 { font-size: 15px; margin: 0 0 8px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+.note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+#layout { display: grid; grid-template-columns: 340px 1fr; gap: 12px; align-items: start; }
+.picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
+.pick { background: var(--panel2); border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: 10px; padding: 9px 11px; cursor: pointer; }
+.pick.value { border-left-color: var(--green); }
+.pick .t { font-weight: 600; }
+.pick .m { font-size: 12px; color: var(--muted); }
+.pick .big { font-size: 17px; font-weight: 700; margin: 3px 0; }
+.tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); margin-left: 6px; vertical-align: middle; }
+.tag.high { color: var(--green); border-color: #1d6b3a; }
+.tag.mid { color: var(--amber); border-color: #7a5410; }
+.tag.low { color: var(--muted); }
+.match { display: flex; align-items: center; gap: 8px; padding: 8px 6px; border-bottom: 1px solid var(--line); cursor: pointer; border-radius: 8px; }
+.match:hover, .match.sel { background: var(--panel2); }
+.match .min { width: 38px; color: var(--green); font-weight: 600; font-size: 13px; }
+.match .names { flex: 1; min-width: 0; }
+.match .names div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.match .lg { color: var(--muted); font-size: 11px; }
+.match .sc { font-weight: 700; font-size: 16px; text-align: right; min-width: 38px; }
+.star { background: none; border: none; padding: 2px 4px; font-size: 18px; color: var(--muted); }
+.star.on { color: var(--amber); }
+.score { display: flex; justify-content: center; align-items: center; gap: 14px; margin: 4px 0 12px; font-size: 20px; font-weight: 700; flex-wrap: wrap; }
+.score .sc { font-size: 30px; }
+.score .min { color: var(--green); font-size: 14px; }
+.bars .row { display: grid; grid-template-columns: 44px 1fr 44px; gap: 8px; align-items: center; margin: 5px 0; font-size: 13px; }
+.bars .row .l { text-align: right; } .bars .row .r { text-align: left; }
+.bars .lab { grid-column: 1 / -1; text-align: center; color: var(--muted); font-size: 11px; margin-bottom: -3px; }
+.track { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--panel2); }
+.track i { display: block; height: 100%; }
+.track i.h { background: var(--blue); } .track i.a { background: var(--amber); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { padding: 6px 6px; text-align: right; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; }
+td input { width: 78px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; font: inherit; text-align: right; }
+.edge.pos { color: var(--green); font-weight: 700; } .edge.neg { color: var(--red); }
+tr.val { background: rgba(34, 197, 94, .09); }
+.events { font-size: 13px; color: var(--muted); }
+.events div { padding: 2px 0; }
+.sec { margin-top: 14px; }
+footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); max-width: 900px; margin: 0 auto; }
+#toasts { position: fixed; top: 64px; right: 10px; left: 10px; z-index: 20; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; }
+.toast { pointer-events: auto; background: #0f3d22; border: 1px solid #1d6b3a; padding: 10px 14px; border-radius: 10px; max-width: 420px; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
+dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 14px; width: min(440px, 94vw); }
+dialog::backdrop { background: rgba(0,0,0,.6); }
+dialog label { display: block; margin: 10px 0; font-size: 13px; color: var(--muted); }
+dialog label.inline { display: flex; gap: 8px; align-items: flex-start; color: var(--text); }
+dialog input[type=text], dialog input[type=password], dialog input[type=number], dialog select { width: 100%; margin-top: 4px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; }
+.row { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; } .row.end { justify-content: flex-end; }
+@media (max-width: 820px) {
+  #layout { grid-template-columns: 1fr; }
+  .picks { grid-template-columns: 1fr; }
+  td input { width: 64px; }
+  th, td { padding: 6px 3px; font-size: 13px; }
+  .brand { width: 100%; }
+}
+
+#tabs { display: flex; gap: 6px; padding-block: 8px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); background: var(--bg); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 4; }
+.tab { flex: 1; text-align: center; }
+.tab.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+.pos { color: var(--green); } .neg { color: var(--red); }
+.pm { border: 1px solid var(--line); border-radius: 12px; background: var(--panel2); padding: 10px 12px; margin-bottom: 10px; }
+.pm h3 { margin: 0 0 2px; font-size: 16px; }
+.pm .sub { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+.pm .txt { font-size: 13px; margin: 6px 0; }
+.pm table td input { width: 64px; }
+.pm .abs { font-size: 12px; color: var(--muted); }
+.verdict { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--line); }
+.verdict.v { color: var(--green); border-color: #1d6b3a; } .verdict.w { color: var(--amber); border-color: #7a5410; } .verdict.n { color: var(--muted); }
+.tri { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; background: var(--panel2); }
+.tri .legs { font-size: 13px; }
+.tri .m { color: var(--muted); font-size: 12px; margin-top: 3px; }
+.seg { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.seg button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+.hot { background: var(--panel2); border: 1px solid #7a5410; border-left: 4px solid var(--amber); border-radius: 10px; padding: 9px 11px; margin-bottom: 8px; cursor: pointer; }
+.hot .t, .fd .t { font-weight: 600; }
+.hot .m, .fd .m { font-size: 12px; color: var(--muted); margin: 2px 0 4px; }
+.fd { border-bottom: 1px solid var(--line); padding: 8px 0; }
+.rp { font-size: 14px; margin: 2px 0; }
+#watchWrap > summary { cursor: pointer; }
+
+.seg { display: flex; gap: 6px; margin: 8px 0; }
+.tabbtn { flex: 1; padding: 7px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); color: var(--muted); font: inherit; }
+.tabbtn.on { color: var(--text, #fff); border-color: var(--blue); }
+.brow { padding: 8px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.brow.hotrow .bt { color: var(--amber); }
+.bt { font-size: 14px; } .bm { color: var(--muted); font-size: 12px; }
+.bar { position: relative; height: 12px; border-radius: 6px; background: var(--panel2); border: 1px solid var(--line); margin: 5px 0; overflow: hidden; }
+.bar .tick { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--muted); opacity: .6; }
+.bar .fill { position: absolute; top: 0; bottom: 0; }
+.bar .fill.h { background: var(--blue); } .bar .fill.a { background: var(--amber); }
+.bs { font-size: 11px; color: var(--muted); }
+
+/* ---- Simulation tab ---- */
+#viewSim .seg { flex-wrap: wrap; }
+.sx-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.sx-grid label { display: block; font-size: 12px; color: var(--muted); }
+.sx-grid select, .sx-grid input[type=number], .sx-row2 input[type=date], .sx-row2 input[type=search] { width: 100%; margin-top: 3px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px; font: inherit; }
+.sx-grid input[type=range] { width: 100%; }
+.sx-row2 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+.sx-row2 input[type=search] { flex: 1; min-width: 160px; width: auto; margin: 0; } .sx-row2 input[type=date] { width: auto; margin: 0; }
+.sx-lg { margin: 12px 0 4px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.sx-row { display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-bottom: 1px solid var(--line); cursor: pointer; border-radius: 8px; }
+.sx-row:hover, .sx-row.sel { background: var(--panel2); }
+.sx-row .sx-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-time, .sx-fin, .sx-live { min-width: 56px; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 13px; }
+.sx-time { color: var(--muted); } .sx-live { color: var(--green); } .sx-fin { color: var(--text); }
+.sx-go { color: var(--blue); font-size: 12px; white-space: nowrap; }
+.sx-title { font-size: 22px; font-weight: 700; margin: 2px 0 4px; }
+.sx-task { display: grid; grid-template-columns: 22px minmax(0, 1.2fr) minmax(0, 1fr); gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.sx-task.fail span:nth-child(3) { color: var(--red); } .sx-task.skip { opacity: .75; }
+.sx-pbar { height: 10px; background: var(--panel2); border-radius: 5px; overflow: hidden; border: 1px solid var(--line); } .sx-pbar i { display: block; height: 100%; background: var(--blue); transition: width .15s; }
+.sx-1x2 { display: flex; height: 30px; border-radius: 8px; overflow: hidden; font-weight: 700; font-size: 13px; }
+.sx-1x2 i { display: flex; align-items: center; justify-content: center; font-style: normal; color: #fff; min-width: 0; overflow: hidden; }
+.sx-1x2 i.h { background: var(--blue); } .sx-1x2 i.d { background: #5b6b8c; } .sx-1x2 i.a { background: var(--amber); color: #1a1200; }
+.sx-1x2l { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; color: var(--muted); margin: 4px 0 10px; flex-wrap: wrap; }
+.sx-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 8px 0; }
+.sx-kv div { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 7px 9px; }
+.sx-kv span { display: block; font-size: 11px; color: var(--muted); } .sx-kv b { font-size: 15px; }
+.sx-small { font-size: 12px; margin-top: 4px; }
+.sx-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+button.primary { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
+.sx-tabs { margin-top: 6px; } .sx-tabs .tabbtn { padding: 8px 10px; }
+.sx-det { border-top: 1px solid var(--line); padding: 6px 0; } .sx-det summary { cursor: pointer; padding: 4px 0; }
+.sx-tbl th, .sx-tbl td { padding: 5px 4px; font-size: 13px; } .sx-tbl tr.val { background: rgba(34,197,94,.10); }
+.sx-tbl td:first-child { max-width: 46vw; }
+.sx-chk { display: flex; gap: 8px; align-items: center; font-size: 13px; margin: 8px 0; }
+.sx-fac { border: 1px solid var(--line); background: var(--panel2); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; } .sx-fac.off { opacity: .55; }
+.sx-fh { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.sx-fh b { flex: 1 1 200px; } .sx-eff { font-size: 12px; } .sx-conf { font-size: 10px; letter-spacing: 1px; color: var(--muted); }
+.sx-pl { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 12px; padding: 4px 0; border-top: 1px dashed var(--line); margin-top: 4px; }
+button.mini { padding: 3px 8px; font-size: 12px; border-radius: 6px; } button.mini.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+.sx-rng { display: block; font-size: 12px; color: var(--muted); margin: 8px 0; } .sx-rng input { width: 100%; }
+.sx-scroll { overflow-x: auto; }
+.sx-heat { width: auto; min-width: 280px; } .sx-heat th, .sx-heat td { text-align: center; padding: 6px 8px; font-size: 12px; border: 1px solid var(--line); }
+.sx-bar { display: grid; grid-template-columns: 62px 1fr 92px; gap: 8px; align-items: center; font-size: 12px; margin: 3px 0; }
+.sx-bar > div { display: flex; height: 12px; background: var(--panel2); border-radius: 6px; overflow: hidden; } .sx-bar i { display: block; height: 100%; } .sx-bar i.h { background: var(--blue); } .sx-bar i.a { background: var(--amber); }
+.sx-news { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; } .sx-news a { color: var(--text); text-decoration: none; } .sx-news.hot a { color: var(--amber); }
+.sx-link { display: inline-block; margin: 6px 0; color: var(--blue); font-size: 13px; }
+@media (max-width: 820px) { .sx-title { font-size: 19px; } .sx-tbl td:first-child { max-width: 40vw; } }
+.sx-pbar-top { position: sticky; top: 0; z-index: 5; margin-bottom: 8px; } .sx-stale > section, .sx-stale > div.seg { opacity: .55; transition: opacity .15s; }
+
+header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidden] { display: block; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">⚽ Football Simulator</div>
+  <div class="chips"><span class="chip muted">Monte Carlo · στοιχηματικό εργαλείο</span></div>
+</header>
+<main>
+<div id="viewSim"></div>
+</main>
+<script>
+'use strict';
+/* Football match simulator — core engine (no DOM, no network).
+   Pieces: RNG helpers, Poisson matrix, team-rating fit (time-decayed attack/defence), minute-by-minute Monte Carlo
+   (goals, shots, corners, cards, penalties, half-time), result aggregation. Everything is plain JS so it runs in
+   the browser (phone/PC) and in Node for tests. */
+(function (root) {
+  const Sim = {};
+
+  // ===================================================== RNG & distributions
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function normal(rng) {
+    let u = rng(); if (u < 1e-12) u = 1e-12;
+    const v = rng();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.283185307179586 * v);
+  }
+  function poisson(rng, lam) {
+    if (!(lam > 0)) return 0;
+    if (lam > 25) return Math.max(0, Math.round(lam + Math.sqrt(lam) * normal(rng)));
+    const L = Math.exp(-lam);
+    let k = 0, p = 1;
+    do { k++; p *= rng(); } while (p > L);
+    return k - 1;
+  }
+  const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
+  Sim.rng = mulberry32; Sim.normal = normal; Sim.poisson = poisson; Sim.clamp = clamp;
+
+  // ===================================================== Poisson matrix (analytic, used by fit/backtest/market blend)
+  function pmf(lam, n) {
+    const a = new Float64Array(n + 1);
+    a[0] = Math.exp(-lam);
+    for (let k = 1; k <= n; k++) a[k] = a[k - 1] * lam / k;
+    return a;
+  }
+  function poissonMatrix(lh, la, n) {
+    n = n || 10;
+    const ph = pmf(lh, n), pa = pmf(la, n), w = n + 1;
+    const m = new Float64Array(w * w);
+    let s = 0;
+    for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) { const v = ph[i] * pa[j]; m[i * w + j] = v; s += v; }
+    for (let i = 0; i < m.length; i++) m[i] /= s;
+    return m;
+  }
+  function matrixSummary(m, n) {
+    n = n || 10;
+    const w = n + 1;
+    let h = 0, d = 0, a = 0, btts = 0, o25 = 0, o15 = 0, o35 = 0;
+    for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) {
+      const v = m[i * w + j];
+      if (i > j) h += v; else if (i === j) d += v; else a += v;
+      if (i > 0 && j > 0) btts += v;
+      const t = i + j;
+      if (t > 2) o25 += v; if (t > 1) o15 += v; if (t > 3) o35 += v;
+    }
+    return { h, d, a, btts, o25, o15, o35 };
+  }
+  Sim.poissonMatrix = poissonMatrix; Sim.matrixSummary = matrixSummary;
+
+  // ===================================================== Rating fit
+  /* matches: [{ts, h, a, hg, ag, hht?, aht?, ref?, prev?}]  (h/a = team ids)
+     Model: E[home goals] = muH * att[h] * def[a] * (home-specific factors);  E[away goals] = muA * att[a] * def[h]
+     Time decay (half-life in days), previous-season matches get an extra weight, ridge shrinkage towards 1. */
+  function fitRatings(matches, o) {
+    o = Object.assign({ halfLife: 100, now: Date.now(), ridge: 4, iters: 40, prevWeight: 0.4, splitK: 6 }, o || {});
+    const decay = Math.LN2 / (o.halfLife * 86400000);
+    const teams = new Map();
+    const ms = [];
+    let sw = 0, shg = 0, sag = 0;
+    for (const m of matches) {
+      if (m.hg == null || m.ag == null || m.h == null || m.a == null) continue;
+      let w = Math.exp(-decay * Math.max(0, o.now - m.ts));
+      if (m.prev) w *= o.prevWeight;
+      if (w < 1e-4) continue;
+      ms.push({ h: m.h, a: m.a, hg: m.hg, ag: m.ag, w, ts: m.ts, hht: m.hht, aht: m.aht, ref: m.ref, cur: !m.prev });
+      for (const id of [m.h, m.a]) if (!teams.has(id)) teams.set(id, { att: 1, def: 1, n: 0, nEff: 0 });
+      sw += w; shg += w * m.hg; sag += w * m.ag;
+    }
+    if (!ms.length || sw <= 0) return null;
+    let muH = shg / sw, muA = sag / sw;
+    const K = o.ridge;
+    for (let it = 0; it < o.iters; it++) {
+      const nA = new Map(), dA = new Map(), nD = new Map(), dD = new Map();
+      for (const id of teams.keys()) { nA.set(id, 0); dA.set(id, 0); nD.set(id, 0); dD.set(id, 0); }
+      for (const m of ms) {
+        const th = teams.get(m.h), ta = teams.get(m.a);
+        nA.set(m.h, nA.get(m.h) + m.w * m.hg); dA.set(m.h, dA.get(m.h) + m.w * muH * ta.def);
+        nA.set(m.a, nA.get(m.a) + m.w * m.ag); dA.set(m.a, dA.get(m.a) + m.w * muA * th.def);
+        nD.set(m.h, nD.get(m.h) + m.w * m.ag); dD.set(m.h, dD.get(m.h) + m.w * muA * ta.att);
+        nD.set(m.a, nD.get(m.a) + m.w * m.hg); dD.set(m.a, dD.get(m.a) + m.w * muH * th.att);
+      }
+      const pm = (muH + muA) / 2;
+      let sa = 0, sd = 0;
+      for (const [id, t] of teams) {
+        t.att = (nA.get(id) + K * pm) / (dA.get(id) + K * pm);
+        t.def = (nD.get(id) + K * pm) / (dD.get(id) + K * pm);
+        sa += t.att; sd += t.def;
+      }
+      sa /= teams.size; sd /= teams.size;
+      for (const t of teams.values()) { t.att /= sa; t.def /= sd; }
+      let eh = 0, ea = 0;
+      for (const m of ms) {
+        const th = teams.get(m.h), ta = teams.get(m.a);
+        eh += m.w * th.att * ta.def; ea += m.w * ta.att * th.def;
+      }
+      muH = shg / eh; muA = sag / ea;
+    }
+    // per-team bookkeeping, home/away splits (shrunk), first-half share
+    let htGoals = 0, htAll = 0;
+    const acc = new Map();
+    for (const id of teams.keys()) acc.set(id, { n: 0, nEff: 0, gf: 0, ga: 0, hSf: 0, hEf: 0, hSa: 0, hEa: 0, aSf: 0, aEf: 0, aSa: 0, aEa: 0, hn: 0, an: 0, ht: 0, tot: 0, last: 0 });
+    for (const m of ms) {
+      const th = teams.get(m.h), ta = teams.get(m.a), H = acc.get(m.h), A = acc.get(m.a);
+      const eh = muH * th.att * ta.def, ea = muA * ta.att * th.def;
+      H.n++; A.n++; H.nEff += m.w; A.nEff += m.w; H.gf += m.hg; H.ga += m.ag; A.gf += m.ag; A.ga += m.hg;
+      H.hn++; A.an++;
+      H.hSf += m.w * m.hg; H.hEf += m.w * eh; H.hSa += m.w * m.ag; H.hEa += m.w * ea;
+      A.aSf += m.w * m.ag; A.aEf += m.w * ea; A.aSa += m.w * m.hg; A.aEa += m.w * eh;
+      if (m.hht != null && m.aht != null) {
+        htGoals += m.w * (m.hht + m.aht); htAll += m.w * (m.hg + m.ag);
+        H.ht += m.w * (m.hht + m.aht); H.tot += m.w * (m.hg + m.ag);
+        A.ht += m.w * (m.hht + m.aht); A.tot += m.w * (m.hg + m.ag);
+      }
+      if (m.ts > H.last) H.last = m.ts; if (m.ts > A.last) A.last = m.ts;
+    }
+    const ht1 = htAll > 20 ? htGoals / htAll : 0.45;
+    const avgGoals = (shg + sag) / sw;
+    const pm = (muH + muA) / 2, SK = o.splitK * pm, HK = 60;
+    const out = { muH, muA, ht1, avgGoals, nMatches: ms.length, teams: {}, halfLife: o.halfLife, now: o.now };
+    for (const [id, t] of teams) {
+      const a = acc.get(id);
+      out.teams[id] = {
+        att: t.att, def: t.def, n: a.n, nEff: a.nEff, gfpg: a.n ? a.gf / a.n : 0, gapg: a.n ? a.ga / a.n : 0,
+        homeFor: (a.hSf + SK) / (a.hEf + SK), homeAg: (a.hSa + SK) / (a.hEa + SK),
+        awayFor: (a.aSf + SK) / (a.aEf + SK), awayAg: (a.aSa + SK) / (a.aEa + SK),
+        ht1: a.tot > 0 ? (a.ht + HK * ht1) / (a.tot + HK) : ht1, last: a.last,
+      };
+    }
+    out.predict = (h, a, opt) => predictLambdas(out, h, a, opt);
+    return out;
+  }
+  function predictLambdas(R, h, a, opt) {
+    opt = opt || {};
+    const th = R.teams[h], ta = R.teams[a];
+    if (!th || !ta) return null;
+    let lh = R.muH * th.att * ta.def, la = R.muA * ta.att * th.def;
+    if (opt.splits !== false) {
+      lh *= th.homeFor * ta.awayAg;
+      la *= ta.awayFor * th.homeAg;
+    }
+    if (opt.neutral) { const g = Math.sqrt(R.muH / R.muA); lh /= g; la *= g; }
+    return { lh, la, ht1: clamp((th.ht1 + ta.ht1) / 2, 0.38, 0.52) };
+  }
+  Sim.fitRatings = fitRatings; Sim.predictLambdas = predictLambdas;
+
+  /* Rolling-origin backtest on the league's own played matches. For each of the last N matches the ratings are
+     fitted only on matches before it. Returns Brier/log-loss of the model vs a league-average baseline. */
+  function backtest(matches, o) {
+    o = Object.assign({ n: 60, minTrain: 80, halfLife: 100, stride: 1 }, o || {});
+    const ms = matches.filter((m) => m.hg != null && m.ag != null).sort((a, b) => a.ts - b.ts);
+    if (ms.length < o.minTrain + 15) return null;
+    const start = Math.max(o.minTrain, ms.length - o.n);
+    let bM = 0, bB = 0, lM = 0, lB = 0, n = 0, bOM = 0, bOB = 0, bGM = 0, bGB = 0, hit = 0;
+    const bins = Array.from({ length: 5 }, () => ({ p: 0, y: 0, n: 0 }));
+    for (let i = start; i < ms.length; i += o.stride) {
+      const m = ms[i];
+      const train = ms.slice(0, i);
+      const R = fitRatings(train, { now: m.ts, halfLife: o.halfLife, iters: 25 });
+      if (!R) continue;
+      const L = predictLambdas(R, m.h, m.a);
+      if (!L) continue;
+      const mat = poissonMatrix(L.lh, L.la, 10), s = matrixSummary(mat, 10);
+      // baseline: league frequencies from the training matches
+      let bh = 0, bd = 0, ba = 0, bo = 0, bg = 0;
+      for (const t of train) { if (t.hg > t.ag) bh++; else if (t.hg === t.ag) bd++; else ba++; if (t.hg + t.ag > 2) bo++; if (t.hg > 0 && t.ag > 0) bg++; }
+      const N = train.length; bh /= N; bd /= N; ba /= N; bo /= N; bg /= N;
+      const y = m.hg > m.ag ? [1, 0, 0] : m.hg === m.ag ? [0, 1, 0] : [0, 0, 1];
+      const pm = [s.h, s.d, s.a], pb = [bh, bd, ba];
+      for (let k = 0; k < 3; k++) { bM += (pm[k] - y[k]) ** 2; bB += (pb[k] - y[k]) ** 2; }
+      const k = y.indexOf(1);
+      lM += -Math.log(Math.max(1e-6, pm[k])); lB += -Math.log(Math.max(1e-6, pb[k]));
+      const yo = m.hg + m.ag > 2 ? 1 : 0, yg = m.hg > 0 && m.ag > 0 ? 1 : 0;
+      bOM += (s.o25 - yo) ** 2; bOB += (bo - yo) ** 2; bGM += (s.btts - yg) ** 2; bGB += (bg - yg) ** 2;
+      if (pm.indexOf(Math.max(...pm)) === k) hit++;
+      const b = bins[Math.min(4, Math.floor(s.h * 5))]; b.p += s.h; b.y += y[0]; b.n++;
+      n++;
+    }
+    if (!n) return null;
+    return {
+      n, brier: bM / n, brierBase: bB / n, logloss: lM / n, loglossBase: lB / n, skill: 1 - bM / bB, hitRate: hit / n,
+      brierOver: bOM / n, brierOverBase: bOB / n, brierBtts: bGM / n, brierBttsBase: bGB / n,
+      calib: bins.filter((b) => b.n >= 3).map((b) => ({ p: b.p / b.n, y: b.y / b.n, n: b.n })),
+    };
+  }
+  Sim.backtest = backtest;
+
+  // ===================================================== Match engine
+  const CONV = 0.78;                    // penalty conversion
+  const XG_BASE = (function () {        // mean of the base shot-quality distribution
+    const small = 0.065 * (1 - Math.exp(-0.24 / 0.065));
+    return 0.12 * 0.45 + 0.88 * small;
+  })();
+  function xgBase(rng) {
+    if (rng() < 0.12) return 0.25 + 0.4 * rng();
+    const x = -Math.log(1 - rng()) * 0.065;
+    return x > 0.24 ? 0.24 : x;
+  }
+  const SLOPE1 = 0.30, SLOPE2 = 0.42, E1 = 1.8, E2 = 4.8;
+  const W1 = new Float64Array(46), W2 = new Float64Array(46);
+  let SUM1 = 0, SUM2 = 0;
+  for (let k = 1; k <= 45; k++) {
+    W1[k] = 1 + SLOPE1 * ((k - 0.5) / 45 - 0.5); W2[k] = 1 + SLOPE2 * ((k - 0.5) / 45 - 0.5);
+    SUM1 += W1[k]; SUM2 += W2[k];
+  }
+  const WEND1 = 1 + SLOPE1 * 0.45, WEND2 = 1 + SLOPE2 * 0.45;
+  const WN1 = SUM1 + E1 * WEND1, WN2 = SUM2 + E2 * WEND2;
+  const RED_OWN = [1, 0.72, 0.52, 0.40, 0.35], RED_OPP = [1, 1.28, 1.5, 1.7, 1.8];
+  const SHOT_OUT = { block: 0.30, off: 0.72 };     // after "no goal": <0.30 blocked, <0.72 off target, else saved
+  const CORNER_P = { block: 0.20, off: 0.05, save: 0.30 };
+  const IND_CORNERS_PER_SHOT = 0.89 * (0.30 * 0.20 + 0.42 * 0.05 + 0.28 * 0.30);
+
+  function prepare(p) {
+    return {
+      lh: p.lh, la: p.la, ht1: clamp(p.ht1 == null ? 0.45 : p.ht1, 0.36, 0.55),
+      penH: p.penH == null ? 0.11 : p.penH, penA: p.penA == null ? 0.11 : p.penA,
+      yH: p.yH == null ? 1.9 : p.yH, yA: p.yA == null ? 2.0 : p.yA,
+      rdH: p.rdH == null ? 0.035 : p.rdH, rdA: p.rdA == null ? 0.04 : p.rdA,
+      cH: p.cH == null ? 5.4 : p.cH, cA: p.cA == null ? 4.5 : p.cA,
+      sigT: p.sigTempo == null ? 0.09 : p.sigTempo, sigM: p.sigTeam == null ? 0.10 : p.sigTeam,
+      sigC: p.sigCorner == null ? 0.18 : p.sigCorner, sigK: p.sigCard == null ? 0.22 : p.sigCard,
+      kgH: p.kgH || 1, kgA: p.kgA || 1, kcH: p.kcH || 1, kcA: p.kcA || 1, stateK: p.stateK == null ? (p.start ? 0.6 : 0.3) : p.stateK,
+      start: p.start || null,
+    };
+  }
+
+  // scratch arrays (reused between runs)
+  const YEL = new Uint8Array(2 * 93), RED = new Uint8Array(2 * 93), PEN = new Uint8Array(2 * 93);
+
+  /* One match. o = output object (filled), rec = optional recorder {ev:[], snap:[], frng}. The main rng is consumed
+     identically with and without a recorder (the recorder only uses its own flavour rng). */
+  function run(P, rng, o, rec) {
+    const sT = P.sigT, sM = P.sigM, sC = P.sigC, sK = P.sigK;
+    const tempo = Math.exp(sT * normal(rng) - 0.5 * sT * sT);
+    const fH = Math.exp(sM * normal(rng) - 0.5 * sM * sM);
+    const fA = Math.exp(sM * normal(rng) - 0.5 * sM * sM);
+    const cm = Math.exp(sC * normal(rng) - 0.5 * sC * sC);
+    const km = Math.exp(sK * normal(rng) - 0.5 * sK * sK);
+    const lamH = P.lh * tempo * fH, lamA = P.la * tempo * fA;
+    const loH = Math.max(0.12, lamH - CONV * P.penH) * P.kgH, loA = Math.max(0.12, lamA - CONV * P.penA) * P.kgA;
+    const SH = clamp(12.2 * Math.pow(loH / 1.25, 0.55), 5, 26), SA = clamp(12.2 * Math.pow(loA / 1.25, 0.55), 5, 26);
+    const qH = loH / SH, qA = loA / SA;
+    const sclH = qH / XG_BASE, sclA = qA / XG_BASE;
+    const cH = P.cH * cm * Math.pow(tempo, 0.5), cA = P.cA * cm * Math.pow(tempo, 0.5);
+    const crH = Math.max(0.35 * cH, cH - IND_CORNERS_PER_SHOT * SH) * P.kcH;
+    const crA = Math.max(0.35 * cA, cA - IND_CORNERS_PER_SHOT * SA) * P.kcA;
+
+    // scheduled single events
+    YEL.fill(0); RED.fill(0); PEN.fill(0);
+    const nYH = poisson(rng, P.yH * km), nYA = poisson(rng, P.yA * km);
+    const nRH = poisson(rng, Math.max(0.006, P.rdH - 0.032) * km), nRA = poisson(rng, Math.max(0.006, P.rdA - 0.032) * km);
+    const nPH = poisson(rng, P.penH * tempo * fH), nPA = poisson(rng, P.penA * tempo * fA);
+    for (let i = 0; i < nYH; i++) { const m = (rng() < 0.40 ? 1 : 46) + ((rng() * 45) | 0); YEL[m]++; if (i >= 1 && rng() < 0.04) { RED[Math.min(90, m + 1 + ((rng() * 15) | 0))]++; } }
+    for (let i = 0; i < nYA; i++) { const m = (rng() < 0.40 ? 1 : 46) + ((rng() * 45) | 0); YEL[93 + m]++; if (i >= 1 && rng() < 0.04) { RED[93 + Math.min(90, m + 1 + ((rng() * 15) | 0))]++; } }
+    for (let i = 0; i < nRH; i++) RED[15 + ((rng() * 76) | 0)]++;
+    for (let i = 0; i < nRA; i++) RED[93 + 15 + ((rng() * 76) | 0)]++;
+    for (let i = 0; i < nPH; i++) PEN[1 + ((rng() * 90) | 0)]++;
+    for (let i = 0; i < nPA; i++) PEN[93 + 1 + ((rng() * 90) | 0)]++;
+
+    let gH = 0, gA = 0, htH = 0, htA = 0, shH = 0, shA = 0, sotH = 0, sotA = 0, coH = 0, coA = 0, coHT_H = 0, coHT_A = 0;
+    let yH = 0, yA = 0, rH = 0, rA = 0, penAw = 0, penGoals = 0, xgH = 0, xgA = 0;
+    let firstT = 0, firstMin = 0, lastMin = 0;
+    let ngH = 0, ngA = 0, gH1 = 0, gA1 = 0;
+    const GMH = o.gmH, GMA = o.gmA;
+    let yHT = 0, rHT = 0;
+    const F = rec ? rec.frng : null;
+    let possAcc = 0, possN = 0, possSm = 0;
+    const st = P.start;
+    if (st && st.minute > 0) {
+      gH = st.hg | 0; gA = st.ag | 0; rH = st.redH | 0; rA = st.redA | 0;
+    }
+
+    for (let half = 1; half <= 2; half++) {
+      const base = half === 1 ? 0 : 45;
+      const share = half === 1 ? P.ht1 : 1 - P.ht1, shareC = half === 1 ? 0.46 : 0.54;
+      const W = half === 1 ? WN1 : WN2;
+      let stop = half === 1 ? 1 + ((rng() * 3) | 0) : -1;
+      for (let k = 1; ; k++) {
+        const reg = k <= 45;
+        if (!reg) {
+          if (stop < 0) {
+            // second-half stoppage grows with goals / cards / (assumed) substitutions
+            stop = clamp(Math.round(2.3 + 0.38 * (gH + gA) + 0.55 * (rH + rA) + 0.07 * (yH + yA) + 0.8 + (rng() - 0.5) * 2.4), 2, 10);
+            if (rec) rec.stop2 = stop;
+          }
+          if (k - 45 > stop) break;
+        }
+        const m = base + (reg ? k : 45);
+        if (st && st.minute > 0 && ((half === 1 && st.minute >= 45 && (reg || k - 45 > 0)) || (reg && m <= st.minute))) continue;
+        const wk = reg ? (half === 1 ? W1[k] : W2[k]) : (half === 1 ? WEND1 : WEND2);
+        const d = gH - gA;
+        const dm = Math.abs(d) > 2 ? 2 : Math.abs(d);
+        const late = m >= 75 ? 0.04 : 0;
+        const SKk = P.stateK;
+        const smH = d < 0 ? 1 + SKk * (0.09 + 0.08 * m / 90) * dm : d > 0 ? 1 - SKk * (0.05 * dm + late) : 1;
+        const smA = d > 0 ? 1 + SKk * (0.09 + 0.08 * m / 90) * dm : d < 0 ? 1 - SKk * (0.05 * dm + late) : 1;
+        const rmH = RED_OWN[rH > 4 ? 4 : rH] * RED_OPP[rA > 4 ? 4 : rA];
+        const rmA = RED_OWN[rA > 4 ? 4 : rA] * RED_OPP[rH > 4 ? 4 : rH];
+        const nk = wk / W;
+        const iH = SH * share * nk * smH * rmH, iA = SA * share * nk * smA * rmA;
+
+        let ev0 = rec ? rec.ev.length : 0;
+        const push = rec ? (type, t, extra) => { const e = { h: half, m, x: reg ? 0 : k - 45, type, t }; if (extra) Object.assign(e, extra); rec.ev.push(e); } : null;
+
+        if (rec && k === 1) push(half === 1 ? 'kickoff' : 'restart', -1, null);
+
+        // ---- scheduled events (only at regular minutes)
+        if (reg) {
+          for (let t = 0; t < 2; t++) {
+            const idx = t * 93 + m;
+            let c = YEL[idx];
+            while (c-- > 0) {
+              if (t === 0) { yH++; if (half === 1) yHT++; } else { yA++; }
+              if (rec) push('yellow', t, null);
+            }
+            c = RED[idx];
+            while (c-- > 0) { if (t === 0) rH++; else rA++; if (rec) push('red', t, null); }
+            c = PEN[idx];
+            while (c-- > 0) {
+              penAw++;
+              const goal = rng() < CONV;
+              const saved = !goal && rng() < 0.6;
+              if (t === 0) { shH++; if (goal || saved) sotH++; xgH += CONV; } else { shA++; if (goal || saved) sotA++; xgA += CONV; }
+              if (rec) push('pen_award', t, null);
+              if (goal) {
+                penGoals++;
+                if (t === 0) { gH++; if (GMH && ngH < 12) GMH[ngH++] = m; } else { gA++; if (GMA && ngA < 12) GMA[ngA++] = m; }
+                if (!firstT) { firstT = t + 1; firstMin = m; }
+                lastMin = m;
+                if (rec) push('goal', t, { pen: true, xg: CONV });
+              } else if (rec) push(saved ? 'pen_save' : 'pen_miss', t, null);
+            }
+          }
+        }
+
+        // ---- shots & corners
+        for (let t = 0; t < 2; t++) {
+          const inten = t === 0 ? iH : iA;
+          const scl = t === 0 ? sclH : sclA;
+          let n = 0;
+          const u = rng(), p0 = Math.exp(-inten);
+          if (u >= p0) n = u >= p0 * (1 + inten) ? 2 : 1;
+          while (n-- > 0) {
+            let x = xgBase(rng) * scl; if (x > 0.92) x = 0.92;
+            if (t === 0) { shH++; xgH += x; } else { shA++; xgA += x; }
+            const r = rng();
+            if (r < x) {
+              if (t === 0) { sotH++; gH++; if (GMH && ngH < 12) GMH[ngH++] = m; } else { sotA++; gA++; if (GMA && ngA < 12) GMA[ngA++] = m; }
+              if (!firstT) { firstT = t + 1; firstMin = m; }
+              lastMin = m;
+              if (rec) push('goal', t, { xg: x });
+            } else {
+              const v = (r - x) / (1 - x);
+              if (v < SHOT_OUT.block) {
+                if (rng() < CORNER_P.block) { if (t === 0) coH++; else coA++; if (rec) { push('shot_block', t, { xg: x }); push('corner', t, null); } } else if (rec) push('shot_block', t, { xg: x });
+              } else if (v < SHOT_OUT.off) {
+                if (rng() < CORNER_P.off) { if (t === 0) coH++; else coA++; if (rec) { push('shot_off', t, { xg: x }); push('corner', t, null); } } else if (rec) push('shot_off', t, { xg: x });
+              } else {
+                if (t === 0) sotH++; else sotA++;
+                if (rng() < CORNER_P.save) { if (t === 0) coH++; else coA++; if (rec) { push('save', t, { xg: x }); push('corner', t, null); } } else if (rec) push('save', t, { xg: x });
+              }
+            }
+          }
+          // residual corners follow the same pressure (state / red-card) multipliers
+          const rc = (t === 0 ? crH * smH * rmH : crA * smA * rmA) * shareC * nk;
+          if (rng() < rc) { if (t === 0) coH++; else coA++; if (rec) push('corner', t, null); }
+        }
+
+        // ---- flavour (recorder only; uses its own rng)
+        if (rec) {
+          if (F() < 0.20) push('foul', F() < iH / (iH + iA + 1e-9) ? 1 : 0, null);
+          if (F() < 0.05) push('offside', F() < iH / (iH + iA + 1e-9) ? 0 : 1, null);
+          if (F() < 0.004) push('injury', F() < 0.5 ? 0 : 1, null);
+          if (reg && half === 2 && (m === 58 || m === 63 || m === 68 || m === 73 || m === 79 || m === 84) && F() < 0.7) push('sub', F() < 0.5 ? 0 : 1, null);
+          if (reg && half === 2 && (m === 46) && F() < 0.2) push('sub', F() < 0.5 ? 0 : 1, null);
+          if (reg && half === 1 && m === 30 && F() < 0.12) push('sub', F() < 0.5 ? 0 : 1, { injured: true });
+          const pw = Math.pow(iH + 1e-9, 0.6), pwA = Math.pow(iA + 1e-9, 0.6);
+          const tgt = pw / (pw + pwA);
+          possSm = possSm ? possSm * 0.85 + tgt * 0.15 + (F() - 0.5) * 0.03 : tgt;
+          possAcc += possSm; possN++;
+          rec.snap.push({
+            h: half, m, x: reg ? 0 : k - 45, gH, gA, shH, shA, sotH, sotA, coH, coA, yH, yA, rH, rA, xgH: +xgH.toFixed(3), xgA: +xgA.toFixed(3),
+            press: +((iH - iA) / (iH + iA + 1e-9)).toFixed(3), poss: +(possAcc / possN).toFixed(4), ball: +possSm.toFixed(3),
+          });
+          // mark events pushed in this tick with their snapshot index
+          for (let i = ev0; i < rec.ev.length; i++) rec.ev[i].s = rec.snap.length - 1;
+        }
+      }
+      if (half === 1) { htH = gH; htA = gA; coHT_H = coH; coHT_A = coA; gH1 = gH; gA1 = gA; if (rec) { rec.ev.push({ h: 1, m: 45, x: stop, type: 'ht', t: -1, s: rec.snap.length - 1 }); } }
+    }
+    if (rec) rec.ev.push({ h: 2, m: 90, x: rec.stop2 || 0, type: 'ft', t: -1, s: rec.snap.length - 1 });
+    o.hg = gH; o.ag = gA; o.hth = htH; o.hta = htA; o.shH = shH; o.shA = shA; o.sotH = sotH; o.sotA = sotA;
+    o.coH = coH; o.coA = coA; o.coHT_H = coHT_H; o.coHT_A = coHT_A; o.yH = yH; o.yA = yA; o.rH = rH; o.rA = rA;
+    o.pen = penAw; o.penGoals = penGoals; o.xgH = xgH; o.xgA = xgA; o.first = firstT; o.firstMin = firstMin; o.lastMin = lastMin;
+    o.ngH = ngH; o.ngA = ngA; o.yHT = yHT; o.stop1 = 0;
+    return o;
+  }
+
+  function newOut() { return { gmH: new Int16Array(12), gmA: new Int16Array(12) }; }
+
+  /* Scale the open-play goal rate and the residual corner rate so that the simulated means equal the targets
+     (game-state effects shift the means slightly, this removes that drift). */
+  function calibrate(P, n) {
+    n = n || 5000;
+    const o = newOut();
+    const Pc = Object.assign({}, P, { start: null });
+    for (let it = 0; it < 2; it++) {
+      const rng = mulberry32(12345);
+      let g1 = 0, g2 = 0, c1 = 0, c2 = 0;
+      for (let i = 0; i < n; i++) { run(Pc, rng, o, null); g1 += o.hg; g2 += o.ag; c1 += o.coH; c2 += o.coA; }
+      g1 /= n; g2 /= n; c1 /= n; c2 /= n;
+      Pc.kgH = clamp(Pc.kgH * Math.pow(P.lh / Math.max(0.05, g1), 0.95), 0.6, 1.7);
+      Pc.kgA = clamp(Pc.kgA * Math.pow(P.la / Math.max(0.05, g2), 0.95), 0.6, 1.7);
+      Pc.kcH = clamp(Pc.kcH * Math.pow(P.cH / Math.max(0.5, c1), 0.95), 0.4, 2.2);
+      Pc.kcA = clamp(Pc.kcA * Math.pow(P.cA / Math.max(0.5, c2), 0.95), 0.4, 2.2);
+    }
+    P.kgH = Pc.kgH; P.kgA = Pc.kgA; P.kcH = Pc.kcH; P.kcA = Pc.kcA;
+    return P;
+  }
+
+  // ===================================================== Aggregation
+  const GM = 10;          // goals matrix cap (index 10 = "10+")
+  function newAcc() {
+    return {
+      n: 0, mat: new Float64Array((GM + 1) * (GM + 1)), ht: new Float64Array(7 * 7), htft: new Float64Array(9),
+      coT: new Float64Array(41), coH: new Float64Array(26), coA: new Float64Array(26), coHT: new Float64Array(26), coMost: new Float64Array(3),
+      cdT: new Float64Array(21), cdH: new Float64Array(14), cdA: new Float64Array(14), cd1H: new Float64Array(14),
+      first: new Float64Array(3), firstBins: new Float64Array(6), gBinsH: new Float64Array(6), gBinsA: new Float64Array(6), gBinsT: new Float64Array(6),
+      shG: new Float64Array(12), d2: new Float64Array(15), g2: new Float64Array(12), g2H: new Float64Array(8), g2A: new Float64Array(8),
+      pen: new Float64Array(5), red: new Float64Array(4), sum: { hg: 0, ag: 0, shH: 0, shA: 0, sotH: 0, sotA: 0, coH: 0, coA: 0, yH: 0, yA: 0, rH: 0, rA: 0, xgH: 0, xgA: 0, pen: 0, penGoals: 0 },
+      moreHalf: new Float64Array(3), bothHalvesH: 0, bothHalvesA: 0, lateGoal: 0, goalBefore30: 0, goalIn1H: 0,
+    };
+  }
+  const bin = (m) => (m <= 15 ? 0 : m <= 30 ? 1 : m <= 45 ? 2 : m <= 60 ? 3 : m <= 75 ? 4 : 5);
+  function add(acc, o) {
+    acc.n++;
+    const hg = o.hg > GM ? GM : o.hg, ag = o.ag > GM ? GM : o.ag;
+    acc.mat[hg * (GM + 1) + ag]++;
+    const hh = o.hth > 6 ? 6 : o.hth, ha = o.hta > 6 ? 6 : o.hta;
+    acc.ht[hh * 7 + ha]++;
+    const r1 = o.hth > o.hta ? 0 : o.hth === o.hta ? 1 : 2, r2 = o.hg > o.ag ? 0 : o.hg === o.ag ? 1 : 2;
+    acc.htft[r1 * 3 + r2]++;
+    const cT = o.coH + o.coA;
+    acc.coT[cT > 40 ? 40 : cT]++; acc.coH[o.coH > 25 ? 25 : o.coH]++; acc.coA[o.coA > 25 ? 25 : o.coA]++;
+    const cHT = o.coHT_H + o.coHT_A; acc.coHT[cHT > 25 ? 25 : cHT]++;
+    acc.coMost[o.coH > o.coA ? 0 : o.coH === o.coA ? 1 : 2]++;
+    const cd = o.yH + o.yA + o.rH + o.rA; acc.cdT[cd > 20 ? 20 : cd]++;
+    acc.cdH[o.yH + o.rH > 13 ? 13 : o.yH + o.rH]++; acc.cdA[o.yA + o.rA > 13 ? 13 : o.yA + o.rA]++;
+    acc.cd1H[o.yHT > 13 ? 13 : o.yHT]++;
+    acc.first[o.first]++;
+    if (o.first) acc.firstBins[bin(o.firstMin)]++;
+    for (let i = 0; i < o.ngH; i++) { const b = bin(o.gmH[i]); acc.gBinsH[b]++; acc.gBinsT[b]++; }
+    for (let i = 0; i < o.ngA; i++) { const b = bin(o.gmA[i]); acc.gBinsA[b]++; acc.gBinsT[b]++; }
+    const tot = o.hg + o.ag, t1 = o.hth + o.hta, t2 = tot - t1;
+    acc.g2[t2 > 11 ? 11 : t2]++; acc.g2H[o.hg - o.hth > 7 ? 7 : o.hg - o.hth]++; acc.g2A[o.ag - o.hta > 7 ? 7 : o.ag - o.hta]++;
+    acc.moreHalf[t1 > t2 ? 0 : t1 === t2 ? 1 : 2]++;
+    { let dd = (o.hg - o.hth) - (o.ag - o.hta); dd = dd > 7 ? 7 : dd < -7 ? -7 : dd; acc.d2[dd + 7]++; }
+    if (o.hth > 0 && o.hg - o.hth > 0) acc.bothHalvesH++;
+    if (o.hta > 0 && o.ag - o.hta > 0) acc.bothHalvesA++;
+    let late = false, b30 = false;
+    for (let i = 0; i < o.ngH; i++) { if (o.gmH[i] > 75) late = true; if (o.gmH[i] <= 30) b30 = true; }
+    for (let i = 0; i < o.ngA; i++) { if (o.gmA[i] > 75) late = true; if (o.gmA[i] <= 30) b30 = true; }
+    if (late) acc.lateGoal++; if (b30) acc.goalBefore30++;
+    acc.pen[o.pen > 4 ? 4 : o.pen]++; acc.red[o.rH + o.rA > 3 ? 3 : o.rH + o.rA]++;
+    const s = acc.sum;
+    s.hg += o.hg; s.ag += o.ag; s.shH += o.shH; s.shA += o.shA; s.sotH += o.sotH; s.sotA += o.sotA; s.coH += o.coH; s.coA += o.coA;
+    s.yH += o.yH; s.yA += o.yA; s.rH += o.rH; s.rA += o.rA; s.xgH += o.xgH; s.xgA += o.xgA; s.pen += o.pen; s.penGoals += o.penGoals;
+  }
+  function norm(a, n) { const r = new Float64Array(a.length); for (let i = 0; i < a.length; i++) r[i] = a[i] / n; return r; }
+  function finish(acc) {
+    const n = acc.n, s = acc.sum;
+    return {
+      n, GM, mat: norm(acc.mat, n), ht: norm(acc.ht, n), htft: norm(acc.htft, n),
+      coT: norm(acc.coT, n), coH: norm(acc.coH, n), coA: norm(acc.coA, n), coHT: norm(acc.coHT, n), coMost: norm(acc.coMost, n),
+      cdT: norm(acc.cdT, n), cdH: norm(acc.cdH, n), cdA: norm(acc.cdA, n), cd1H: norm(acc.cd1H, n),
+      first: norm(acc.first, n), firstBins: norm(acc.firstBins, n), gBinsH: norm(acc.gBinsH, n), gBinsA: norm(acc.gBinsA, n), gBinsT: norm(acc.gBinsT, n),
+      d2: norm(acc.d2, n), g2: norm(acc.g2, n), g2H: norm(acc.g2H, n), g2A: norm(acc.g2A, n), moreHalf: norm(acc.moreHalf, n), pen: norm(acc.pen, n), red: norm(acc.red, n),
+      bothHalvesH: acc.bothHalvesH / n, bothHalvesA: acc.bothHalvesA / n, lateGoal: acc.lateGoal / n, goalBefore30: acc.goalBefore30 / n,
+      mean: { hg: s.hg / n, ag: s.ag / n, shH: s.shH / n, shA: s.shA / n, sotH: s.sotH / n, sotA: s.sotA / n, coH: s.coH / n, coA: s.coA / n, yH: s.yH / n, yA: s.yA / n, rH: s.rH / n, rA: s.rA / n, xgH: s.xgH / n, xgA: s.xgA / n, pen: s.pen / n, penGoals: s.penGoals / n },
+    };
+  }
+
+  /* Run N simulations in chunks so the UI stays responsive. opts: {n, seed, chunk, onProgress, calibrate} → Promise<R> */
+  function simulate(params, opts) {
+    opts = Object.assign({ n: 20000, seed: 20261102, chunk: 1500, calibrate: true }, opts || {});
+    const P = prepare(params);
+    if (opts.calibrate) calibrate(P);
+    const rng = mulberry32(opts.seed), o = newOut(), acc = newAcc();
+    let done = 0;
+    return new Promise((resolve) => {
+      const step = () => {
+        const end = Math.min(opts.n, done + opts.chunk);
+        for (; done < end; done++) { run(P, rng, o, null); add(acc, o); }
+        if (opts.onProgress) opts.onProgress(done / opts.n);
+        if (done < opts.n) { (typeof setTimeout === 'function' ? setTimeout : (f) => f())(step, 0); } else {
+          const R = finish(acc);
+          R.params = P;
+          resolve(R);
+        }
+      };
+      step();
+    });
+  }
+  function simulateSync(params, opts) {
+    opts = Object.assign({ n: 20000, seed: 20261102, calibrate: true }, opts || {});
+    const P = prepare(params);
+    if (opts.calibrate) calibrate(P);
+    const rng = mulberry32(opts.seed), o = newOut(), acc = newAcc();
+    for (let i = 0; i < opts.n; i++) { run(P, rng, o, null); add(acc, o); }
+    const R = finish(acc); R.params = P; return R;
+  }
+
+  /* Play one match with a full event log. If P was calibrated (simulate does it) pass R.params; otherwise it is prepared here. */
+  function record(paramsOrP, seed) {
+    const P = paramsOrP.kgH !== undefined && paramsOrP.sigT !== undefined ? paramsOrP : prepare(paramsOrP);
+    const rng = mulberry32(seed), rec = { ev: [], snap: [], frng: mulberry32((seed ^ 0x9e3779b9) >>> 0), stop2: 0 };
+    const o = newOut();
+    run(P, rng, o, rec);
+    return { seed, result: { hg: o.hg, ag: o.ag, hth: o.hth, hta: o.hta, coH: o.coH, coA: o.coA, yH: o.yH, yA: o.yA, rH: o.rH, rA: o.rA, shH: o.shH, shA: o.shA, sotH: o.sotH, sotA: o.sotA, xgH: o.xgH, xgA: o.xgA, pen: o.pen }, events: rec.events || rec.ev, snaps: rec.snap, stop2: rec.stop2 };
+  }
+  /* Find a seed whose (fast) outcome equals a wanted score — used for the "most likely scenario" replay. */
+  function findSeed(P, hg, ag, start, tries) {
+    const o = newOut();
+    for (let i = 0; i < (tries || 4000); i++) {
+      const seed = (start || 1000) + i * 7919;
+      run(P, mulberry32(seed), o, null);
+      if (o.hg === hg && o.ag === ag) return seed;
+    }
+    return null;
+  }
+
+  // one-shot helper for tests / what-if: fast mean readout
+  function quick(params, n, seed) { const R = simulateSync(params, { n: n || 6000, seed: seed || 99 }); return R; }
+
+  Sim.prepare = prepare; Sim.calibrate = calibrate; Sim.run = run; Sim.simulate = simulate; Sim.simulateSync = simulateSync;
+  Sim.record = record; Sim.findSeed = findSeed; Sim.quick = quick; Sim.newOut = newOut; Sim.GM = GM;
+  Sim.constants = { CONV, XG_BASE };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = Sim; else root.Sim = Sim;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+'use strict';
+/* Markets, bookmaker odds parsing, market blending, value / Kelly. Pure functions (browser + Node). */
+(function (root) {
+  const M = {};
+  const GMX = 10, W = GMX + 1;
+  const GR = { ft: 'Αποτέλεσμα', goals: 'Γκολ', half: 'Ημίχρονο', combo: 'Συνδυαστικά', ah: 'Χάντικαπ', corners: 'Κόρνερ', cards: 'Κάρτες & πέναλτι', timing: 'Χρονισμός' };
+  M.GROUPS = GR;
+
+  const sumMat = (R, f) => { let s = 0; for (let i = 0; i <= GMX; i++) for (let j = 0; j <= GMX; j++) s += R.mat[i * W + j] * (f(i, j) ? 1 : 0); return s; };
+  const sumArr = (a, from, to) => { let s = 0; for (let i = Math.max(0, from); i <= Math.min(a.length - 1, to); i++) s += a[i]; return s; };
+  const overHist = (a, line) => sumArr(a, Math.floor(line) + 1, a.length - 1);   // P(X > line) for .5 lines
+  const fmt = (x) => (x > 0 ? '+' : '') + x;
+
+  /* Full market list from a simulation result. names = {h, a}. */
+  M.markets = function (R, names) {
+    names = names || { h: 'Γηπεδούχος', a: 'Φιλοξενούμενος' };
+    const out = [];
+    const add = (key, group, label, p, extra) => out.push(Object.assign({ key, group, label, p, type: 'win' }, extra || {}));
+    const pH = sumMat(R, (i, j) => i > j), pD = sumMat(R, (i, j) => i === j), pA = sumMat(R, (i, j) => i < j);
+    add('ft:1', 'ft', `1 · ${names.h}`, pH); add('ft:X', 'ft', 'X · Ισοπαλία', pD); add('ft:2', 'ft', `2 · ${names.a}`, pA);
+    add('dc:1X', 'ft', `1Χ · ${names.h} ή ισοπαλία`, pH + pD); add('dc:12', 'ft', '12 · Χωρίς ισοπαλία', pH + pA); add('dc:X2', 'ft', `Χ2 · ισοπαλία ή ${names.a}`, pD + pA);
+    add('dnb:1', 'ft', `DNB 1 · ${names.h} (επιστροφή στην ισοπαλία)`, pH, { type: 'push', pp: pD });
+    add('dnb:2', 'ft', `DNB 2 · ${names.a} (επιστροφή στην ισοπαλία)`, pA, { type: 'push', pp: pD });
+
+    for (const L of [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]) {
+      const o = sumMat(R, (i, j) => i + j > L);
+      add(`ou:${L}:over`, 'goals', `Over ${L} γκολ`, o); add(`ou:${L}:under`, 'goals', `Under ${L} γκολ`, 1 - o);
+    }
+    const bt = sumMat(R, (i, j) => i > 0 && j > 0);
+    add('btts:yes', 'goals', 'GG · Σκοράρουν και οι δύο', bt); add('btts:no', 'goals', 'NG · Δεν σκοράρουν και οι δύο', 1 - bt);
+    for (const L of [0.5, 1.5, 2.5]) {
+      const oh = sumMat(R, (i) => i > L), oa = sumMat(R, (i, j) => j > L);
+      add(`tt:h:${L}:over`, 'goals', `${names.h} Over ${L}`, oh); add(`tt:h:${L}:under`, 'goals', `${names.h} Under ${L}`, 1 - oh);
+      add(`tt:a:${L}:over`, 'goals', `${names.a} Over ${L}`, oa); add(`tt:a:${L}:under`, 'goals', `${names.a} Under ${L}`, 1 - oa);
+    }
+    add('cs:h', 'goals', `Clean sheet ${names.h}`, sumMat(R, (i, j) => j === 0)); add('cs:a', 'goals', `Clean sheet ${names.a}`, sumMat(R, (i) => i === 0));
+    add('wtn:h', 'goals', `${names.h} νίκη χωρίς γκολ κατά`, sumMat(R, (i, j) => i > 0 && j === 0)); add('wtn:a', 'goals', `${names.a} νίκη χωρίς γκολ κατά`, sumMat(R, (i, j) => j > 0 && i === 0));
+    for (let g = 0; g <= 5; g++) add(`tg:${g}`, 'goals', `Ακριβώς ${g} γκολ`, sumMat(R, (i, j) => i + j === g));
+    add('tg:6+', 'goals', '6+ γκολ', sumMat(R, (i, j) => i + j >= 6));
+    add('oe:odd', 'goals', 'Σύνολο γκολ μονό', sumMat(R, (i, j) => (i + j) % 2 === 1)); add('oe:even', 'goals', 'Σύνολο γκολ ζυγό', sumMat(R, (i, j) => (i + j) % 2 === 0));
+
+    // half-time
+    let h1 = 0, hx = 0, h2 = 0;
+    for (let i = 0; i < 7; i++) for (let j = 0; j < 7; j++) { const v = R.ht[i * 7 + j]; if (i > j) h1 += v; else if (i === j) hx += v; else h2 += v; }
+    add('ht:1', 'half', `Ημίχρονο 1 · ${names.h}`, h1); add('ht:X', 'half', 'Ημίχρονο Χ', hx); add('ht:2', 'half', `Ημίχρονο 2 · ${names.a}`, h2);
+    for (const L of [0.5, 1.5, 2.5]) {
+      let o = 0; for (let i = 0; i < 7; i++) for (let j = 0; j < 7; j++) if (i + j > L) o += R.ht[i * 7 + j];
+      add(`ht_ou:${L}:over`, 'half', `1ο ημίχρονο Over ${L}`, o); add(`ht_ou:${L}:under`, 'half', `1ο ημίχρονο Under ${L}`, 1 - o);
+    }
+    let s1 = 0, s2 = 0, s3 = 0; for (let d = -7; d <= 7; d++) { const v = R.d2[d + 7]; if (d > 0) s1 += v; else if (d === 0) s2 += v; else s3 += v; }
+    add('h2:1', 'half', `2ο ημίχρονο 1 · ${names.h}`, s1); add('h2:X', 'half', '2ο ημίχρονο Χ', s2); add('h2:2', 'half', `2ο ημίχρονο 2 · ${names.a}`, s3);
+    const T = ['1', 'X', '2'];
+    for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) add(`htft:${T[a]}:${T[b]}`, 'half', `HT/FT ${T[a]}/${T[b]}`, R.htft[a * 3 + b]);
+    add('mh:1', 'half', 'Περισσότερα γκολ στο 1ο ημίχρονο', R.moreHalf[0]); add('mh:X', 'half', 'Ίσα γκολ στα δύο ημίχρονα', R.moreHalf[1]); add('mh:2', 'half', 'Περισσότερα γκολ στο 2ο ημίχρονο', R.moreHalf[2]);
+    add('bh:h', 'half', `${names.h} σκοράρει και στα δύο ημίχρονα`, R.bothHalvesH); add('bh:a', 'half', `${names.a} σκοράρει και στα δύο ημίχρονα`, R.bothHalvesA);
+
+    // combos from the joint score matrix
+    const res = (i, j) => (i > j ? '1' : i === j ? 'X' : '2');
+    for (const r of T) for (const yn of ['yes', 'no']) add(`cmb:ft_btts:${r}:${yn}`, 'combo', `${r} & ${yn === 'yes' ? 'GG' : 'NG'}`, sumMat(R, (i, j) => res(i, j) === r && ((i > 0 && j > 0) === (yn === 'yes'))));
+    for (const L of [1.5, 2.5, 3.5]) for (const r of T) for (const ov of ['over', 'under']) add(`cmb:ft_ou:${r}:${L}:${ov}`, 'combo', `${r} & ${ov === 'over' ? 'Over' : 'Under'} ${L}`, sumMat(R, (i, j) => res(i, j) === r && ((i + j > L) === (ov === 'over'))));
+    for (const yn of ['yes', 'no']) for (const ov of ['over', 'under']) add(`cmb:btts_ou:${yn}:2.5:${ov}`, 'combo', `${yn === 'yes' ? 'GG' : 'NG'} & ${ov === 'over' ? 'Over' : 'Under'} 2.5`, sumMat(R, (i, j) => ((i > 0 && j > 0) === (yn === 'yes')) && ((i + j > 2.5) === (ov === 'over'))));
+    for (const [k, lab, f] of [['1X', `1Χ`, (i, j) => i >= j], ['X2', 'Χ2', (i, j) => j >= i], ['12', '12', (i, j) => i !== j]])
+      for (const ov of ['over', 'under']) add(`cmb:dc_ou:${k}:2.5:${ov}`, 'combo', `${lab} & ${ov === 'over' ? 'Over' : 'Under'} 2.5`, sumMat(R, (i, j) => f(i, j) && ((i + j > 2.5) === (ov === 'over'))));
+
+    // handicaps
+    for (const L of [-2.5, -2, -1.5, -1, -0.5, 0.5, 1, 1.5, 2, 2.5]) {
+      const whole = Math.abs(L % 1) < 1e-9;
+      const pw = sumMat(R, (i, j) => i + L > j), pp = whole ? sumMat(R, (i, j) => i + L === j) : 0;
+      add(`ah:h:${L}`, 'ah', `${names.h} ${fmt(L)}`, pw, whole ? { type: 'push', pp } : {});
+      const qw = sumMat(R, (i, j) => j - L > i), qp = whole ? sumMat(R, (i, j) => j - L === i) : 0;
+      add(`ah:a:${-L}`, 'ah', `${names.a} ${fmt(-L)}`, qw, whole ? { type: 'push', pp: qp } : {});
+    }
+
+    // corners
+    for (let L = 7.5; L <= 13.5; L += 1) { const o = overHist(R.coT, L); add(`co:ou:${L}:over`, 'corners', `Κόρνερ Over ${L}`, o); add(`co:ou:${L}:under`, 'corners', `Κόρνερ Under ${L}`, 1 - o); }
+    for (const L of [3.5, 4.5, 5.5, 6.5]) {
+      const oh = overHist(R.coH, L), oa = overHist(R.coA, L);
+      add(`co:h:${L}:over`, 'corners', `Κόρνερ ${names.h} Over ${L}`, oh); add(`co:h:${L}:under`, 'corners', `Κόρνερ ${names.h} Under ${L}`, 1 - oh);
+      add(`co:a:${L}:over`, 'corners', `Κόρνερ ${names.a} Over ${L}`, oa); add(`co:a:${L}:under`, 'corners', `Κόρνερ ${names.a} Under ${L}`, 1 - oa);
+    }
+    for (const L of [3.5, 4.5, 5.5]) { const o = overHist(R.coHT, L); add(`co:ht:${L}:over`, 'corners', `Κόρνερ 1ου ημιχρόνου Over ${L}`, o); add(`co:ht:${L}:under`, 'corners', `Κόρνερ 1ου ημιχρόνου Under ${L}`, 1 - o); }
+    add('co:1x2:1', 'corners', `Περισσότερα κόρνερ ${names.h}`, R.coMost[0]); add('co:1x2:X', 'corners', 'Ίσα κόρνερ', R.coMost[1]); add('co:1x2:2', 'corners', `Περισσότερα κόρνερ ${names.a}`, R.coMost[2]);
+
+    // cards / pens
+    for (const L of [1.5, 2.5, 3.5, 4.5, 5.5, 6.5]) { const o = overHist(R.cdT, L); add(`cd:ou:${L}:over`, 'cards', `Κάρτες Over ${L}`, o); add(`cd:ou:${L}:under`, 'cards', `Κάρτες Under ${L}`, 1 - o); }
+    for (const L of [0.5, 1.5, 2.5]) { const oh = overHist(R.cdH, L), oa = overHist(R.cdA, L); add(`cd:h:${L}:over`, 'cards', `Κάρτες ${names.h} Over ${L}`, oh); add(`cd:a:${L}:over`, 'cards', `Κάρτες ${names.a} Over ${L}`, oa); }
+    for (const L of [0.5, 1.5, 2.5]) add(`cd:ht:${L}:over`, 'cards', `Κίτρινες 1ου ημιχρόνου (${names.h}) Over ${L}`, overHist(R.cd1H, L), { hidden: true });
+    add('pen:yes', 'cards', 'Θα υπάρξει πέναλτι', 1 - R.pen[0]); add('pen:no', 'cards', 'Δεν θα υπάρξει πέναλτι', R.pen[0]);
+    add('red:yes', 'cards', 'Θα υπάρξει κόκκινη κάρτα', 1 - R.red[0]); add('red:no', 'cards', 'Δεν θα υπάρξει κόκκινη', R.red[0]);
+
+    // timing
+    add('fg:h', 'timing', `Πρώτο γκολ ${names.h}`, R.first[1]); add('fg:a', 'timing', `Πρώτο γκολ ${names.a}`, R.first[2]); add('fg:none', 'timing', 'Κανένα γκολ (0-0)', R.first[0]);
+    add('late:yes', 'timing', 'Γκολ μετά το 75\'', R.lateGoal); add('g30:yes', 'timing', 'Γκολ μέσα στα πρώτα 30\'', R.goalBefore30);
+    return out.filter((m) => !m.hidden);
+  };
+
+  M.topScores = function (R, n) {
+    const arr = [];
+    for (let i = 0; i <= GMX; i++) for (let j = 0; j <= GMX; j++) arr.push({ h: i, a: j, p: R.mat[i * W + j] });
+    arr.sort((x, y) => y.p - x.p);
+    return arr.slice(0, n || 8);
+  };
+
+  // ===================================================== odds parsing
+  const num = (x) => { const v = parseFloat(String(x).replace(',', '.')); return isFinite(v) ? v : null; };
+  const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const lineOf = (v) => { const m = /(-?\d+(?:\.\d+)?)/.exec(v); return m ? parseFloat(m[1]) : null; };
+  const sideOf = (v) => (/^over/i.test(v) ? 'over' : /^under/i.test(v) ? 'under' : null);
+  const resOf = (s) => { s = norm(s); return s === 'home' || s === '1' ? '1' : s === 'draw' || s === 'x' ? 'X' : s === 'away' || s === '2' ? '2' : null; };
+
+  /* Map one (bet name, value label) to our canonical market key (or null). */
+  M.mapBet = function (betName, value) {
+    const b = norm(betName), v = String(value == null ? '' : value).trim();
+    let m;
+    if (b === 'match winner') { const r = resOf(v); return r ? 'ft:' + r : null; }
+    if (b === 'home/away') { const r = resOf(v); return r && r !== 'X' ? 'dnb:' + r : null; }
+    if (b === 'double chance') { const t = norm(v); return t === 'home/draw' ? 'dc:1X' : t === 'home/away' ? 'dc:12' : t === 'draw/away' ? 'dc:X2' : null; }
+    if (b === 'goals over/under') { const s = sideOf(v), L = lineOf(v); return s && L != null ? `ou:${L}:${s}` : null; }
+    if (b === 'goals over/under first half') { const s = sideOf(v), L = lineOf(v); return s && L != null ? `ht_ou:${L}:${s}` : null; }
+    if (b === 'both teams score') { const t = norm(v); return t === 'yes' ? 'btts:yes' : t === 'no' ? 'btts:no' : null; }
+    if (b === 'first half winner') { const r = resOf(v); return r ? 'ht:' + r : null; }
+    if (b === 'second half winner') { const r = resOf(v); return r ? 'h2:' + r : null; }
+    if (b === 'ht/ft double') { m = /^(home|draw|away)\/(home|draw|away)$/i.exec(v); return m ? `htft:${resOf(m[1])}:${resOf(m[2])}` : null; }
+    if (b === 'asian handicap') { m = /^(home|away)\s*([+-]?\d+(?:\.\d+)?)$/i.exec(v); if (!m) return null; const L = parseFloat(m[2]); return m[1].toLowerCase() === 'home' ? `ah:h:${L}` : `ah:a:${L}`; }
+    if (b === 'total - home' || b === 'total - away') { const s = sideOf(v), L = lineOf(v); return s && L != null ? `tt:${b.endsWith('home') ? 'h' : 'a'}:${L}:${s}` : null; }
+    if (b === 'clean sheet - home' || b === 'clean sheet - away') return norm(v) === 'yes' ? `cs:${b.endsWith('home') ? 'h' : 'a'}` : null;
+    if (b === 'win to nil - home' || b === 'win to nil - away') return norm(v) === 'yes' ? `wtn:${b.endsWith('home') ? 'h' : 'a'}` : null;
+    if (b === 'results/both teams score' || b === 'result/both teams score') { m = /^(home|draw|away)\s*\/\s*(yes|no)$/i.exec(v); return m ? `cmb:ft_btts:${resOf(m[1])}:${m[2].toLowerCase()}` : null; }
+    if (b === 'result/total goals') { m = /^(home|draw|away)\s*\/\s*(over|under)\s*(\d+(?:\.\d+)?)$/i.exec(v); return m ? `cmb:ft_ou:${resOf(m[1])}:${parseFloat(m[3])}:${m[2].toLowerCase()}` : null; }
+    if (b === 'both teams to score & total goals' || b === 'total goals/both teams to score') { m = /(yes|no)\s*\/\s*(over|under)\s*(\d+(?:\.\d+)?)/i.exec(v); return m ? `cmb:btts_ou:${m[1].toLowerCase()}:${parseFloat(m[3])}:${m[2].toLowerCase()}` : null; }
+    if (b === 'odd/even' || b === 'goals odd/even') { const t = norm(v); return t === 'odd' ? 'oe:odd' : t === 'even' ? 'oe:even' : null; }
+    if (b === 'corners over under' || b === 'corners over/under') { const s = sideOf(v), L = lineOf(v); return s && L != null ? `co:ou:${L}:${s}` : null; }
+    if (b === 'home corners over/under' || b === 'away corners over/under' || b === 'home team total corners(over/under)' || b === 'away team total corners(over/under)') { const s = sideOf(v), L = lineOf(v); return s && L != null ? `co:${b.startsWith('home') ? 'h' : 'a'}:${L}:${s}` : null; }
+    if (b === 'corners 1x2') { const r = resOf(v); return r ? 'co:1x2:' + r : null; }
+    if (b === 'cards over/under' || b === 'cards over under') { const s = sideOf(v), L = lineOf(v); return s && L != null ? `cd:ou:${L}:${s}` : null; }
+    return null;
+  };
+
+  /* response of /odds?fixture=ID  →  {best:{key:{o,book,med,n}}, consensus:{ft,ou,btts}, nBooks, books:[..]} */
+  M.parseOdds = function (resp) {
+    const per = {};               // key -> [{o, book}]
+    const bookView = [];          // per-bookmaker de-vig groups
+    let nBooks = 0;
+    for (const item of resp || []) {
+      for (const bk of item.bookmakers || []) {
+        nBooks++;
+        const g = { ft: {}, ou: {}, btts: {} };
+        for (const bet of bk.bets || []) {
+          for (const val of bet.values || []) {
+            const key = M.mapBet(bet.name, val.value), o = num(val.odd);
+            if (!key || !(o > 1)) continue;
+            (per[key] = per[key] || []).push({ o, book: bk.name });
+            let m;
+            if ((m = /^ft:([1X2])$/.exec(key))) g.ft[m[1]] = o;
+            else if ((m = /^ou:(\d+(?:\.\d+)?):(over|under)$/.exec(key))) { (g.ou[m[1]] = g.ou[m[1]] || {})[m[2]] = o; }
+            else if ((m = /^btts:(yes|no)$/.exec(key))) g.btts[m[1]] = o;
+          }
+        }
+        bookView.push(g);
+      }
+    }
+    const best = {};
+    for (const [k, arr] of Object.entries(per)) {
+      arr.sort((a, b) => b.o - a.o);
+      const med = arr[Math.floor((arr.length - 1) / 2)].o;
+      best[k] = { o: arr[0].o, book: arr[0].book, med, n: arr.length };
+    }
+    // de-vigged consensus (proportional), averaged over bookmakers that offer a complete set
+    const cons = { ft: null, ou: {}, btts: null };
+    const avg = (list) => (list.length ? list.reduce((a, b) => a + b, 0) / list.length : null);
+    const ftL = bookView.filter((g) => g.ft['1'] && g.ft.X && g.ft['2']).map((g) => { const s = 1 / g.ft['1'] + 1 / g.ft.X + 1 / g.ft['2']; return { '1': 1 / g.ft['1'] / s, X: 1 / g.ft.X / s, '2': 1 / g.ft['2'] / s }; });
+    if (ftL.length) cons.ft = { '1': avg(ftL.map((x) => x['1'])), X: avg(ftL.map((x) => x.X)), '2': avg(ftL.map((x) => x['2'])), n: ftL.length };
+    const lines = new Set(); bookView.forEach((g) => Object.keys(g.ou).forEach((l) => lines.add(l)));
+    for (const l of lines) {
+      const arr = bookView.filter((g) => g.ou[l] && g.ou[l].over && g.ou[l].under).map((g) => { const s = 1 / g.ou[l].over + 1 / g.ou[l].under; return 1 / g.ou[l].over / s; });
+      if (arr.length >= 2 || (arr.length && bookView.length <= 2)) cons.ou[l] = { over: avg(arr), n: arr.length };
+    }
+    const bL = bookView.filter((g) => g.btts.yes && g.btts.no).map((g) => { const s = 1 / g.btts.yes + 1 / g.btts.no; return 1 / g.btts.yes / s; });
+    if (bL.length) cons.btts = { yes: avg(bL), n: bL.length };
+    return { best, consensus: cons, nBooks };
+  };
+
+  // ===================================================== market blend (solve λh, λa to hit blended 1X2 + O/U2.5)
+  function poisSummary(S, lh, la) { return S.matrixSummary(S.poissonMatrix(lh, la, 9), 9); }
+  M.solveLambdas = function (S, target, init) {
+    let x = Math.log(init.lh), y = Math.log(init.la), step = 0.35;
+    const loss = (a, b) => {
+      const s = poisSummary(S, Math.exp(a), Math.exp(b));
+      let l = (s.h - target.h) ** 2 + (s.d - target.d) ** 2 + (s.a - target.a) ** 2;
+      if (target.o25 != null) l += 1.5 * (s.o25 - target.o25) ** 2;
+      return l;
+    };
+    let best = loss(x, y);
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
+    for (let it = 0; it < 80 && step > 1e-4; it++) {
+      let moved = false;
+      for (const [dx, dy] of dirs) { const nx = x + dx * step, ny = y + dy * step, l = loss(nx, ny); if (l < best - 1e-12) { best = l; x = nx; y = ny; moved = true; } }
+      if (!moved) step *= 0.5;
+    }
+    return { lh: Math.exp(x), la: Math.exp(y), loss: best };
+  };
+  /* Blend the model with the bookmaker consensus: w=0 pure model, w=1 pure market. */
+  M.blend = function (S, lh, la, consensus, w) {
+    const pure = poisSummary(S, lh, la);
+    const out = { w, pure, market: null, target: null, lh, la, applied: false };
+    if (!consensus || !consensus.ft || !(w > 0)) return out;
+    const mk = { h: consensus.ft['1'], d: consensus.ft.X, a: consensus.ft['2'] };
+    let mo = null;
+    if (consensus.ou && consensus.ou['2.5']) mo = consensus.ou['2.5'].over;
+    out.market = Object.assign({}, mk, { o25: mo });
+    out.target = { h: (1 - w) * pure.h + w * mk.h, d: (1 - w) * pure.d + w * mk.d, a: (1 - w) * pure.a + w * mk.a, o25: mo != null ? (1 - w) * pure.o25 + w * mo : null };
+    const r = M.solveLambdas(S, out.target, { lh, la });
+    out.lh = r.lh; out.la = r.la; out.applied = true; out.fit = r.loss;
+    return out;
+  };
+
+  // ===================================================== value / Kelly
+  M.MIN_ODDS = 1.30;
+  M.kelly = function (m, o, frac, cap, unc) {
+    const pw = Math.max(0, m.p - unc), pl = m.type === 'push' ? Math.max(0, 1 - m.p - (m.pp || 0)) : 1 - pw;
+    const f = (pw * (o - 1) - pl) / (o - 1);
+    if (!(f > 0)) return 0;
+    return Math.min(cap, frac * f);
+  };
+  /* rows for the markets that have a bookmaker price. opts: {minEdge, kellyFrac, cap, unc, bankroll} */
+  M.evaluate = function (markets, best, opts) {
+    opts = Object.assign({ minEdge: 0.04, kellyFrac: 0.25, cap: 0.03, unc: 0.02, bankroll: 0 }, opts || {});
+    const rows = [];
+    for (const m of markets) {
+      const b = best[m.key];
+      if (!b || !(m.p > 0.001)) continue;
+      const o = b.o;
+      const pl = m.type === 'push' ? 1 - m.p - (m.pp || 0) : 1 - m.p;
+      const ev = m.p * (o - 1) - pl;
+      const fair = m.type === 'push' ? (1 - (m.pp || 0)) / m.p : 1 / m.p;
+      const sp = M.kelly(m, o, opts.kellyFrac, opts.cap, opts.unc);
+      rows.push({ key: m.key, group: m.group, label: m.label, p: m.p, odds: o, book: b.book, med: b.med, nBooks: b.n, fair, ev, edge: ev, kellyPct: sp, stake: opts.bankroll ? sp * opts.bankroll : null, minOdds: fair * 1.06, eligible: o >= M.MIN_ODDS, value: ev >= opts.minEdge && o >= M.MIN_ODDS && sp > 0 });
+    }
+    rows.sort((a, b) => b.ev - a.ev);
+    return rows;
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = M; else root.SimMarkets = M;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+'use strict';
+/* Turns the loaded data (ctx) into simulation parameters plus a list of explainable factors.
+   Every factor has an id so the UI can switch it on/off; the final parameters are recomputed instantly. */
+(function (root) {
+  const S = typeof module !== 'undefined' && module.exports ? require('./sim.js') : root.Sim;
+  const MK = typeof module !== 'undefined' && module.exports ? require('./simmarkets.js') : root.SimMarkets;
+  const B = {};
+  const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
+  const pct = (x) => (x >= 1 ? '+' : '−') + Math.abs((x - 1) * 100).toFixed(1) + '%';
+  const DAY = 86400000;
+
+  const POS_DEF = { G: 0.07, D: 0.028, M: 0.012, F: 0.004 };
+
+  /* Effect of the missing players of one side. Returns {list, att (multiplier for own goals), def (multiplier for opponent goals)} */
+  function absences(side, ctx, opts, teamId) {
+    const players = (ctx.players && ctx.players[side]) || [];
+    const byId = new Map(players.map((p) => [p.id, p]));
+    const games = Math.max(1, ...players.map((p) => p.apps || 0));
+    const teamGoals = Math.max(1, players.reduce((s, p) => s + (p.goals || 0), 0));
+    const lu = ctx.lineups && ctx.lineups[side];
+    const list = [];
+    const addP = (p, w, source) => {
+      const ov = opts.playerOverride && opts.playerOverride[p.id];
+      if (ov === 'in') w = 0; else if (ov === 'out') w = 1;
+      const info = byId.get(p.id) || p;
+      const known = info.min != null && players.length > 0;
+      const s = known ? clamp(info.min / (games * 90), 0, 1) : 0.4;
+      const g = known ? (info.goals || 0) / teamGoals : 0, a = known ? (info.assists || 0) / teamGoals : 0;
+      const pos = info.pos || 'M';
+      const attLoss = known ? w * (0.5 * g + 0.2 * a) : w * 0.012;
+      const defLoss = w * (POS_DEF[pos] || 0.01) * (known ? s : 0.5);
+      list.push({ id: p.id, name: info.name || p.name, pos, w, s, goals: info.goals || 0, assists: info.assists || 0, attLoss, defLoss, source, override: ov || null });
+    };
+    if (lu && lu.xi && lu.xi.length >= 9 && players.length) {
+      const inXI = new Set(lu.xi.map((p) => p.id)), inSubs = new Set((lu.subs || []).map((p) => p.id));
+      for (const p of players) {
+        const s = (p.min || 0) / (games * 90);
+        if (s < 0.5 || inXI.has(p.id)) continue;
+        addP(p, inSubs.has(p.id) ? 0.3 : 1, 'lineup');
+      }
+    } else {
+      for (const inj of ctx.injuries || []) {
+        if (inj.tid !== teamId) continue;
+        addP({ id: inj.pid, name: inj.name }, /question/i.test(inj.type || '') ? 0.5 : 1, 'injury:' + (inj.reason || ''));
+      }
+    }
+    // manual extra: playerOverride 'out' for players that are not in the list
+    for (const [pid, v] of Object.entries(opts.playerOverride || {})) {
+      if (v !== 'out' || list.some((x) => String(x.id) === String(pid))) continue;
+      const p = players.find((q) => String(q.id) === String(pid));
+      if (p) addP(p, 1, 'manual');
+    }
+    const att = clamp(1 - list.reduce((s, x) => s + x.attLoss, 0), 0.78, 1), def = clamp(1 + list.reduce((s, x) => s + x.defLoss, 0), 1, 1.22);
+    return { list, att, def, confirmed: !!(lu && lu.xi && lu.xi.length >= 9) };
+  }
+
+  function formEffect(recent, ratings, teamId) {
+    if (!recent || recent.length < 3) return null;
+    const last = recent.slice(-5);
+    let rf = 0, ra = 0, n = 0, ef = 0, ea = 0;
+    for (const m of last) {
+      const L = ratings.teams[m.opp] ? (m.home ? S.predictLambdas(ratings, teamId, m.opp) : S.predictLambdas(ratings, m.opp, teamId)) : null;
+      const expF = L ? (m.home ? L.lh : L.la) : (m.home ? ratings.muH : ratings.muA), expA = L ? (m.home ? L.la : L.lh) : (m.home ? ratings.muA : ratings.muH);
+      rf += m.gf - expF; ra += m.ga - expA; ef += expF; ea += expA; n++;
+    }
+    const att = clamp(1 + 0.3 * (rf / Math.max(1, ef)), 0.95, 1.05), conc = clamp(1 + 0.3 * (ra / Math.max(1, ea)), 0.95, 1.05);
+    const pts = last.reduce((s, m) => s + (m.gf > m.ga ? 3 : m.gf === m.ga ? 1 : 0), 0);
+    return { att, conc, pts, n, gf: last.reduce((s, m) => s + m.gf, 0), ga: last.reduce((s, m) => s + m.ga, 0), str: last.map((m) => (m.gf > m.ga ? 'Ν' : m.gf === m.ga ? 'Ι' : 'Η')).join('') };
+  }
+
+  function restEffect(recent, kickoff) {
+    if (!recent || !recent.length) return null;
+    const lastTs = Math.max(...recent.map((m) => m.ts));
+    const days = (kickoff - lastTs) / DAY;
+    const c14 = recent.filter((m) => kickoff - m.ts <= 14 * DAY && kickoff - m.ts > 0).length;
+    let own = 1, conc = 1;
+    if (days < 3.2) { own *= 0.97; conc *= 1.02; } else if (days < 4.2) { own *= 0.99; conc *= 1.01; }
+    if (c14 >= 4) { own *= 0.985; conc *= 1.01; }
+    return { days, c14, own, conc };
+  }
+
+  function weatherEffect(w) {
+    if (!w) return null;
+    let eff = 1; const notes = [];
+    if (w.precipMm >= 0.5) { const e = 1 - Math.min(0.04, 0.012 * w.precipMm); eff *= e; notes.push(`βροχή ${w.precipMm.toFixed(1)} mm/ώρα`); }
+    if (w.gustKmh >= 45) { eff *= 0.96; notes.push(`ριπές ${Math.round(w.gustKmh)} km/h`); } else if (w.windKmh >= 30) { eff *= 0.975; notes.push(`άνεμος ${Math.round(w.windKmh)} km/h`); }
+    if (w.tempC >= 30) { eff *= 0.97; notes.push(`ζέστη ${Math.round(w.tempC)}°C`); } else if (w.tempC <= 2) { eff *= 0.985; notes.push(`κρύο ${Math.round(w.tempC)}°C`); }
+    if ([71, 73, 75, 77, 85, 86].includes(w.code)) { eff *= 0.97; notes.push('χιόνι'); }
+    return { eff: clamp(eff, 0.92, 1), notes };
+  }
+
+  const shrink = (n, x, k, prior) => (n * x + k * prior) / (n + k);
+
+  B.run = function (ctx, opts) {
+    opts = Object.assign({ halfLife: 100, neutral: false, disabled: {}, manual: {}, blendW: 0.3, playerOverride: {}, derby: false, start: null, refCards: 0, nSim: 20000 }, opts || {});
+    const man = Object.assign({ hAtt: 0, hDef: 0, aAtt: 0, aDef: 0 }, opts.manual);
+    const fx = ctx.fixture, hid = fx.home.id, aid = fx.away.id, kick = fx.ts || Date.now();
+    const off = (id) => !!opts.disabled[id];
+
+    // ---- 1. ratings
+    let matches = ctx.matches || [];
+    const cur = (id) => matches.filter((m) => !m.prev && (m.h === id || m.a === id)).length;
+    let crossLeague = false;
+    if (fx.league.type === 'Cup' || cur(hid) < 8 || cur(aid) < 8) {
+      const seen = new Set(matches.map((m) => m.id));
+      const extra = [...((ctx.teamMatches && ctx.teamMatches.home) || []), ...((ctx.teamMatches && ctx.teamMatches.away) || [])].filter((m) => !seen.has(m.id) && seen.add(m.id));
+      matches = matches.concat(extra);
+      crossLeague = true;
+    }
+    const ratings = S.fitRatings(matches, { now: Math.min(Date.now(), kick), halfLife: opts.halfLife });
+    if (!ratings || !ratings.teams[hid] || !ratings.teams[aid]) return { error: 'Δεν βρέθηκαν αρκετά αποτελέσματα για να εκτιμηθεί η δύναμη των ομάδων (νέα ομάδα ή πολύ αρχή σεζόν;).' };
+    const th = ratings.teams[hid], ta = ratings.teams[aid];
+    const base = S.predictLambdas(ratings, hid, aid, { neutral: opts.neutral });
+    // keep the raw strength estimate in a believable range; teams from different leagues are only comparable
+    // relative to their own league average, so that comparison is pulled towards an average match
+    if (crossLeague) { base.lh = Math.pow(base.lh / 1.45, 0.8) * 1.45; base.la = Math.pow(base.la / 1.15, 0.8) * 1.15; }
+    base.lh = clamp(base.lh, 0.2, 3.8); base.la = clamp(base.la, 0.2, 3.8);
+    const factors = [];
+    let eH = 1, eA = 1;
+    const addF = (f) => {
+      f.on = !off(f.id);
+      f.effH = f.effH == null ? 1 : f.effH; f.effA = f.effA == null ? 1 : f.effA;
+      factors.push(f);
+      if (f.on) { eH *= f.effH; eA *= f.effA; }
+    };
+
+    // ---- 2. factors
+    addF({ id: 'strength', group: 'base', label: 'Δύναμη ομάδων (από αποτελέσματα λίγκας)', effH: 1, effA: 1, locked: true, conf: clamp((Math.min(th.nEff, ta.nEff)) / 10, 0.2, 1),
+      detail: `${fx.home.name}: επίθεση ${th.att.toFixed(2)} · άμυνα ${th.def.toFixed(2)} (${th.n} αγώνες) · ${fx.away.name}: επίθεση ${ta.att.toFixed(2)} · άμυνα ${ta.def.toFixed(2)} (${ta.n} αγώνες). Οι πρόσφατοι αγώνες μετράνε περισσότερο (ημιζωή ${opts.halfLife} ημέρες).${crossLeague ? ' Διαφορετικές λίγκες/κύπελλο: η σύγκριση είναι πιο αβέβαιη.' : ''}` });
+    const ha = ratings.muH / ratings.muA;
+    addF({ id: 'venue', group: 'base', label: opts.neutral ? 'Ουδέτερο γήπεδο (χωρίς πλεονέκτημα έδρας)' : 'Έδρα', effH: 1, effA: 1, locked: true, conf: 0.8,
+      detail: opts.neutral ? 'Αφαιρέθηκε το πλεονέκτημα έδρας.' : `Στη λίγκα οι γηπεδούχοι σκοράρουν ${(ratings.muH).toFixed(2)} και οι φιλοξενούμενοι ${(ratings.muA).toFixed(2)} γκολ (πλεονέκτημα ${pct(ha)}). Ειδικό στοιχείο ομάδων: ${fx.home.name} εντός ${pct(th.homeFor)} γκολ υπέρ / ${pct(th.homeAg)} κατά· ${fx.away.name} εκτός ${pct(ta.awayFor)} υπέρ / ${pct(ta.awayAg)} κατά (σχετικά με το γενικό επίπεδο).` });
+
+    const fh = formEffect(ctx.recent && ctx.recent.home, ratings, hid), fa = formEffect(ctx.recent && ctx.recent.away, ratings, aid);
+    if (fh && fa) {
+      addF({ id: 'form', group: 'context', label: 'Φόρμα τελευταίων αγώνων (όλες οι διοργανώσεις)', effH: fh.att * fa.conc, effA: fa.att * fh.conc, conf: 0.5,
+        detail: `${fx.home.name}: ${fh.str} (${fh.gf}-${fh.ga}, ${fh.pts} β.) · ${fx.away.name}: ${fa.str} (${fa.gf}-${fa.ga}, ${fa.pts} β.). Μικρή διόρθωση μόνο για ό,τι ξεπερνά τις προσδοκίες των αποτελεσμάτων.` });
+    }
+    const rh = restEffect(ctx.recent && ctx.recent.home, kick), ra = restEffect(ctx.recent && ctx.recent.away, kick);
+    if (rh && ra) {
+      addF({ id: 'rest', group: 'context', label: 'Ξεκούραση / φόρτος αγώνων', effH: rh.own * ra.conc, effA: ra.own * rh.conc, conf: 0.4,
+        detail: `${fx.home.name}: ${rh.days.toFixed(1)} ημέρες από τον προηγούμενο αγώνα (${rh.c14} αγώνες σε 14 ημέρες) · ${fx.away.name}: ${ra.days.toFixed(1)} ημέρες (${ra.c14}).` });
+    }
+
+    const abH = absences('home', ctx, opts, hid), abA = absences('away', ctx, opts, aid);
+    const haveAbs = ctx.lineups || ctx.injuries;
+    if (haveAbs) {
+      const fmt = (ab) => (ab.list.length ? ab.list.map((x) => `${x.name} (${x.pos}${x.w < 1 ? ', αμφίβολος' : ''}${x.goals ? ', ' + x.goals + ' γκολ' : ''})`).join(', ') : 'κανένας γνωστός');
+      addF({ id: 'absences', group: 'players', label: ctx.lineups ? 'Απουσίες (από επίσημες ενδεκάδες)' : 'Τραυματισμοί / τιμωρίες', effH: abH.att * abA.def, effA: abA.att * abH.def, conf: ctx.lineups ? 0.85 : ctx.players ? 0.6 : 0.35,
+        detail: `${fx.home.name}: ${fmt(abH)} · ${fx.away.name}: ${fmt(abA)}. Η επίδραση κάθε παίκτη βγαίνει από το μερίδιο γκολ/ασίστ και τα λεπτά συμμετοχής του (θεωρώ ότι ο αντικαταστάτης αναπληρώνει το μισό).`,
+        players: { home: abH.list, away: abA.list } });
+    }
+    const lu = ctx.lineups;
+    if (lu && lu.home && lu.away && lu.home.formation && lu.away.formation) {
+      const fe = (f) => { const d = (f || '').split('-').map(Number).filter((x) => x > 0); if (d.length < 3) return { own: 1, opp: 1 }; const df = d[0], fw = d[d.length - 1]; return { own: (df >= 5 ? 0.96 : 1) * (fw >= 3 ? 1.03 : 1), opp: (df >= 5 ? 0.97 : 1) * (fw >= 3 ? 1.02 : 1) }; };
+      const a = fe(lu.home.formation), b = fe(lu.away.formation);
+      addF({ id: 'formation', group: 'players', label: 'Συστήματα (ενδεκάδες)', effH: a.own * b.opp, effA: b.own * a.opp, conf: 0.3,
+        detail: `${fx.home.name} ${lu.home.formation} · ${fx.away.name} ${lu.away.formation}. Μικρή ευρηματική διόρθωση (άμυνα με 5 = λιγότερα γκολ, 3 φορ = περισσότερα).` });
+    }
+
+    if (ctx.h2h && ctx.h2h.length >= 3) {
+      let sg = 0, se = 0, hw = 0, dw = 0, aw = 0;
+      for (const m of ctx.h2h) {
+        sg += m.hg + m.ag; se += ratings.muH + ratings.muA;
+        const hgFor = m.hid === hid ? m.hg : m.ag, agFor = m.hid === hid ? m.ag : m.hg;
+        if (hgFor > agFor) hw++; else if (hgFor === agFor) dw++; else aw++;
+      }
+      const r = shrink(ctx.h2h.length, sg / se, 6, 1);
+      const eff = clamp(1 + 0.4 * (r - 1), 0.96, 1.04);
+      addF({ id: 'h2h', group: 'context', label: 'Ιστορικό μεταξύ τους', effH: eff, effA: eff, conf: 0.3,
+        detail: `Τελευταίοι ${ctx.h2h.length} αγώνες: ${fx.home.name} ${hw} νίκες, ${dw} ισοπαλίες, ${fx.away.name} ${aw}. Μέσος όρος ${(sg / ctx.h2h.length).toFixed(2)} γκολ ανά αγώνα· επηρεάζει μόνο το σύνολο των γκολ και ελάχιστα.` });
+    }
+
+    const wf = weatherEffect(opts.weather !== undefined && opts.weather !== null ? opts.weather : ctx.weather);
+    if (wf) {
+      const w = opts.weather || ctx.weather;
+      addF({ id: 'weather', group: 'context', label: 'Καιρός την ώρα του αγώνα', effH: wf.eff, effA: wf.eff, conf: ctx.weather && ctx.weather.forecastDaysAhead > 5 ? 0.3 : 0.55,
+        detail: `${w.place ? w.place + ': ' : ''}${Math.round(w.tempC)}°C, άνεμος ${Math.round(w.windKmh)} km/h, βροχή ${w.precipMm.toFixed(1)} mm/ώρα.${wf.notes.length ? ' Επίδραση: ' + wf.notes.join(', ') + '.' : ' Κανονικές συνθήκες, χωρίς επίδραση.'}` });
+    }
+
+    // referee
+    let refGoals = 1, refCards = 1, refPen = 1, refInfo = null;
+    if (fx.referee) {
+      const rm = matches.filter((m) => m.ref && m.ref === fx.referee);
+      if (rm.length >= 2) {
+        let sg = 0, se = 0;
+        for (const m of rm) { const L = S.predictLambdas(ratings, m.h, m.a); sg += m.hg + m.ag; se += L ? L.lh + L.la : ratings.muH + ratings.muA; }
+        refGoals = clamp(Math.sqrt(shrink(rm.length, sg / se, 8, 1)), 0.95, 1.05);
+        refInfo = { n: rm.length, goalsPerGame: sg / rm.length };
+      }
+      const rc = ctx.refCards;
+      if (rc && rc.n >= 2) {
+        const leagueY = (ctx.teamStats && ctx.teamStats.home && ctx.teamStats.away && ctx.teamStats.home.played && ctx.teamStats.away.played)
+          ? ctx.teamStats.home.yellow / ctx.teamStats.home.played + ctx.teamStats.away.yellow / ctx.teamStats.away.played : 3.9;
+        refCards = clamp(shrink(rc.n, rc.yellow / rc.n, 4, leagueY) / leagueY, 0.8, 1.3);
+        refPen = clamp(shrink(rc.n, rc.pen / rc.n, 6, 0.22) / 0.22, 0.6, 1.6);
+        refInfo = Object.assign(refInfo || {}, { cardsN: rc.n, yPerGame: rc.yellow / rc.n, rPerGame: rc.red / rc.n, penPerGame: rc.pen / rc.n });
+      }
+      if (refInfo) {
+        addF({ id: 'referee', group: 'context', label: `Διαιτητής: ${fx.referee}`, effH: refGoals, effA: refGoals, conf: clamp(((refInfo.n || 0) + (refInfo.cardsN || 0)) / 14, 0.15, 0.7),
+          detail: `${refInfo.n ? `Σε ${refInfo.n} αγώνες της λίγκας: ${refInfo.goalsPerGame.toFixed(2)} γκολ/αγώνα. ` : ''}${refInfo.cardsN ? `Τελευταίοι ${refInfo.cardsN} αγώνες: ${refInfo.yPerGame.toFixed(1)} κίτρινες, ${refInfo.rPerGame.toFixed(2)} κόκκινες, ${refInfo.penPerGame.toFixed(2)} πέναλτι ανά αγώνα → κάρτες ×${refCards.toFixed(2)}, πέναλτι ×${refPen.toFixed(2)}.` : ''}` });
+      }
+    }
+    if (opts.derby) addF({ id: 'derby', group: 'manual', label: 'Ντέρμπι / υψηλή ένταση', effH: 1, effA: 1, conf: 0.4, detail: 'Περισσότερες κάρτες (×1.18) και λίγο περισσότερα πέναλτι.' });
+
+    // manual
+    const mH = (1 + man.hAtt / 100) * (1 - man.aDef / 100), mA = (1 + man.aAtt / 100) * (1 - man.hDef / 100);
+    if (man.hAtt || man.hDef || man.aAtt || man.aDef) addF({ id: 'manual', group: 'manual', label: 'Χειροκίνητη διόρθωση', effH: mH, effA: mA, conf: 0.5, detail: `Επίθεση γηπεδούχου ${man.hAtt}% · άμυνα γηπεδούχου ${man.hDef}% · επίθεση φιλοξενούμενου ${man.aAtt}% · άμυνα φιλοξενούμενου ${man.aDef}%.` });
+
+    let lh = clamp(base.lh * eH, 0.2, 4.5), la = clamp(base.la * eA, 0.2, 4.5);
+    const afterFactors = { lh, la };
+
+    // ---- 3. market blend (last)
+    let blend = null;
+    const cons = ctx.odds && ctx.odds.consensus;
+    let w = opts.blendW;
+    if (crossLeague && w < 0.5 && opts.autoBlend !== false) w = Math.max(w, 0.5);
+    if (cons && cons.ft && w > 0 && !off('market')) {
+      blend = MK.blend(S, lh, la, cons, w);
+      if (blend.applied) {
+        factors.push({ id: 'market', group: 'market', on: true, label: `Αγορά (bookmakers) · βάρος ${Math.round(w * 100)}%`, effH: blend.lh / lh, effA: blend.la / la, conf: 0.9,
+          detail: `Καθαρό μοντέλο 1/Χ/2: ${(blend.pure.h * 100).toFixed(0)}/${(blend.pure.d * 100).toFixed(0)}/${(blend.pure.a * 100).toFixed(0)} · αγορά (χωρίς περιθώριο): ${(blend.market.h * 100).toFixed(0)}/${(blend.market.d * 100).toFixed(0)}/${(blend.market.a * 100).toFixed(0)}${blend.market.o25 != null ? ` · Over 2.5: μοντέλο ${(blend.pure.o25 * 100).toFixed(0)}% / αγορά ${(blend.market.o25 * 100).toFixed(0)}%` : ''}. Οι αγορές είναι συνήθως πολύ ακριβείς, γι' αυτό η εκτίμηση μετακινείται προς αυτές.${crossLeague && w > opts.blendW ? ' Αυξήθηκε αυτόματα γιατί οι ομάδες δεν συγκρίνονται άμεσα.' : ''}` });
+        lh = blend.lh; la = blend.la;
+      }
+    } else if (cons && cons.ft) {
+      factors.push({ id: 'market', group: 'market', on: false, label: 'Αγορά (bookmakers)', effH: 1, effA: 1, conf: 0.9, detail: 'Απενεργοποιημένο: η προσομοίωση βασίζεται μόνο στο μοντέλο.' });
+      blend = MK.blend(S, afterFactors.lh, afterFactors.la, cons, 0);
+    }
+
+    // ---- 4. corners / cards / penalties / half-time
+    const cp = ctx.corners;
+    const cAvgH = 5.2, cAvgA = 4.5, cAvg = (cAvgH + cAvgA) / 2;
+    let cH = cAvgH, cA = cAvgA, cornerSrc = 'προεπιλογή λίγκας';
+    if (cp && cp.home && cp.away && cp.home.n >= 3 && cp.away.n >= 3) {
+      const f = (t, k) => shrink(t.n, k, 4, cAvg) / cAvg;
+      cH = cAvgH * f(cp.home, cp.home.for / cp.home.n) * f(cp.away, cp.away.against / cp.away.n);
+      cA = cAvgA * f(cp.away, cp.away.for / cp.away.n) * f(cp.home, cp.home.against / cp.home.n);
+      cornerSrc = `μέσοι όροι τελευταίων ${cp.home.n}+${cp.away.n} αγώνων`;
+    }
+    cH *= Math.pow(lh / (ratings.muH || 1.4), 0.2); cA *= Math.pow(la / (ratings.muA || 1.1), 0.2);
+    cH = clamp(cH, 2.5, 9.5); cA = clamp(cA, 2, 8.5);
+
+    const ts = ctx.teamStats;
+    const leagueY = ts && ts.home && ts.away && ts.home.played && ts.away.played ? (ts.home.yellow / ts.home.played + ts.away.yellow / ts.away.played) / 2 : 1.95;
+    const ownY = (t, fallback) => (t && t.played >= 3 ? shrink(t.played, t.yellow / t.played, 5, fallback) : fallback);
+    const derbyY = opts.derby ? 1.18 : 1;
+    let yH = (0.65 * ownY(ts && ts.home, leagueY) + 0.35 * leagueY) * 0.97 * refCards * derbyY * (1 + (opts.refCards || 0) * 0.15);
+    let yA = (0.65 * ownY(ts && ts.away, leagueY) + 0.35 * leagueY) * 1.05 * refCards * derbyY * (1 + (opts.refCards || 0) * 0.15);
+    const ownR = (t) => (t && t.played >= 3 ? shrink(t.played, t.red / t.played, 8, 0.045) : 0.045);
+    const rdH = clamp(ownR(ts && ts.home) * 0.9 * (opts.derby ? 1.2 : 1), 0.02, 0.12), rdA = clamp(ownR(ts && ts.away) * 1.1 * (opts.derby ? 1.2 : 1), 0.02, 0.12);
+    const penBase = (t) => (t && t.played >= 5 && t.penWon != null ? shrink(t.played, t.penWon / t.played, 12, 0.11) : 0.11);
+    const penH = clamp(penBase(ts && ts.home) * Math.pow(lh / 1.4, 0.4) * refPen * (opts.derby ? 1.1 : 1), 0.04, 0.3);
+    const penA = clamp(penBase(ts && ts.away) * Math.pow(la / 1.2, 0.4) * refPen * (opts.derby ? 1.1 : 1), 0.04, 0.3);
+    factors.push({ id: 'cards', group: 'secondary', on: true, locked: true, label: 'Κάρτες, πέναλτι & κόρνερ', effH: 1, effA: 1, conf: ts ? 0.55 : 0.3,
+      detail: `Κίτρινες: ${fx.home.name} ${yH.toFixed(2)} · ${fx.away.name} ${yA.toFixed(2)} ανά αγώνα${ts ? ' (από τη σεζόν)' : ' (μέσος όρος)'} · κόκκινες ~${(rdH + rdA).toFixed(2)} · πέναλτι ~${(penH + penA).toFixed(2)}. Κόρνερ: ${cH.toFixed(1)} + ${cA.toFixed(1)} (${cornerSrc}).` });
+
+    // ---- 5. confidence
+    const have = (x) => (x ? 1 : 0);
+    const nEffMin = Math.min(th.nEff, ta.nEff);
+    const completeness = clamp(0.30 * clamp(nEffMin / 10, 0, 1) + 0.15 * have(ctx.lineups) + 0.08 * have(ctx.injuries) + 0.12 * have(cons && cons.ft) + 0.05 * have(refInfo) + 0.05 * have(ctx.weather)
+      + 0.06 * have(ctx.recent) + 0.03 * have(ctx.h2h) + 0.08 * have(ctx.players) + 0.05 * have(cp) + 0.03 * have(ts) - (crossLeague ? 0.1 : 0), 0.05, 1);
+    const sigTeam = 0.07 + 0.08 * (1 - clamp(nEffMin / 14, 0, 1)) + (crossLeague ? 0.03 : 0);
+    const sigTempo = 0.08;
+    const params = {
+      lh, la, ht1: base.ht1, cH, cA, yH, yA, rdH, rdA, penH, penA, sigTeam, sigTempo, start: opts.start || null,
+    };
+    return {
+      params, factors, ratings, base, blend, crossLeague, completeness, absences: { home: abH, away: abA },
+      lambdas: { base: { lh: base.lh, la: base.la }, afterFactors, final: { lh, la } },
+      unc: 0.015 + 0.035 * (1 - completeness), refInfo,
+    };
+  };
+
+  B.completenessLabel = (c) => (c >= 0.75 ? ['Υψηλή', 'high'] : c >= 0.5 ? ['Μέτρια', 'mid'] : ['Χαμηλή', 'low']);
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = B; else root.SimBuild = B;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+'use strict';
+/* Data layer of the simulator: API-Football (browser calls with the key stored on this device), Open-Meteo weather
+   and best-effort news. Everything is refreshed right before a simulation (volatile data: lineups, injuries, odds,
+   referee, weather, news); heavy/immutable data is cached on the device so the daily quota is spared. */
+(function (root) {
+  const D = {};
+  const DAY = 86400000;
+  const LSget = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
+  const LSset = (k, v) => {
+    try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch {
+      // quota: drop the oldest simulator caches and retry once
+      try {
+        const keys = Object.keys(localStorage).filter((x) => x.startsWith('lbs:')).map((x) => { const o = LSget(x); return [x, (o && o.t) || 0]; }).sort((a, b) => a[1] - b[1]);
+        for (const [k2] of keys.slice(0, Math.max(3, Math.ceil(keys.length / 3)))) localStorage.removeItem(k2);
+        localStorage.setItem(k, JSON.stringify(v)); return true;
+      } catch { return false; }
+    }
+  };
+  const mem = new Map();
+  const state = { remaining: null, minuteLeft: null, calls: 0, lastError: null };
+  D.state = state;
+
+  function cget(name, ttl) {
+    const m = mem.get(name);
+    if (m && Date.now() - m.t < ttl) return m.v;
+    const o = LSget('lbs:' + name);
+    if (o && o.t && Date.now() - o.t < ttl) { mem.set(name, o); return o.v; }
+    return undefined;
+  }
+  function cset(name, v, persist) {
+    const o = { t: Date.now(), v };
+    mem.set(name, o);
+    if (persist) LSset('lbs:' + name, o);
+  }
+  D.clearCache = function () {
+    mem.clear();
+    try { Object.keys(localStorage).filter((x) => x.startsWith('lbs:')).forEach((x) => localStorage.removeItem(x)); } catch {}
+  };
+
+  // ------------------------------------------------ API-Football with a small concurrency pool
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  let active = 0; const waiters = [];
+  async function slot() { if (active >= 4) await new Promise((r) => waiters.push(r)); active++; }
+  function release() { active--; const w = waiters.shift(); if (w) w(); }
+
+  D.hasKey = () => !!LSget('lbd_key');
+  /* the /status endpoint does not count against the daily quota */
+  D.quota = async function () {
+    try {
+      const r = await api('/status');
+      const q = (r.response && r.response.requests) || (Array.isArray(r.response) && r.response[0] && r.response[0].requests) || null;
+      if (q && q.limit_day != null) { state.remaining = Math.max(0, q.limit_day - q.current); state.limitDay = q.limit_day; }
+    } catch {}
+    return state.remaining;
+  };
+  async function api(path, attempt) {
+    attempt = attempt || 0;
+    const key = LSget('lbd_key');
+    if (!key) throw new Error('Δεν υπάρχει κλειδί API-Football. Βάλε το στις Ρυθμίσεις.');
+    await slot();
+    try {
+      const r = await fetch('https://v3.football.api-sports.io' + path, { headers: { 'x-apisports-key': key } });
+      state.calls++;
+      const rem = r.headers.get('x-ratelimit-requests-remaining');
+      if (rem != null) state.remaining = Number(rem);
+      const rm = r.headers.get('x-ratelimit-remaining');
+      if (rm != null) state.minuteLeft = Number(rm);
+      if (r.status === 429 && attempt < 2) { release(); await sleep(1800 * (attempt + 1)); await slot(); return api(path, attempt + 1); }
+      if (!r.ok) throw new Error('API-Football HTTP ' + r.status);
+      const j = await r.json();
+      const errs = j.errors && (Array.isArray(j.errors) ? j.errors : Object.values(j.errors));
+      if (errs && errs.length) {
+        const msg = errs.join('; ');
+        if (/rate|limit/i.test(msg) && attempt < 2) { release(); await sleep(2000 * (attempt + 1)); await slot(); return api(path, attempt + 1); }
+        throw new Error('API-Football: ' + msg);
+      }
+      return { response: j.response, paging: j.paging };
+    } finally { release(); }
+  }
+  /* cached GET. opts: {ttl, persist, fresh} — fresh bypasses the cache (volatile data right before a run). */
+  async function get(path, opts) {
+    opts = Object.assign({ ttl: 60000, persist: false, fresh: false }, opts || {});
+    if (!opts.fresh) { const c = cget('api:' + path, opts.ttl); if (c !== undefined) return c; }
+    const res = await api(path);
+    const v = res;
+    cset('api:' + path, v, false);
+    return v;
+  }
+  D.get = get;
+
+  // ------------------------------------------------ normalisers
+  const CUP_RX = /(cup|pokal|copa|coppa|coupe|kupa|kύπελλο|κύπελλο|champions league|europa|conference|supercup|qualif|play-?off|friendl)/i;
+  const KO_RX = /(round of|quarter|semi|final|qualifying|preliminary|play-?offs?|group stage|league stage|knockout|\d(st|nd|rd|th) round)/i;
+  function isCup(l) { return CUP_RX.test(l.name || '') || KO_RX.test(l.round || ''); }
+  function normFixture(it) {
+    const f = it.fixture || {}, l = it.league || {}, t = it.teams || {}, g = it.goals || {}, s = (it.score || {}).halftime || {};
+    return {
+      id: f.id, ts: (f.timestamp || 0) * 1000, date: f.date, referee: f.referee || null, status: f.status || {}, venue: f.venue || {},
+      league: { id: l.id, name: l.name, country: l.country, season: l.season, round: l.round, logo: l.logo, flag: l.flag, type: isCup(l) ? 'Cup' : 'League' },
+      home: { id: t.home && t.home.id, name: t.home && t.home.name, logo: t.home && t.home.logo }, away: { id: t.away && t.away.id, name: t.away && t.away.name, logo: t.away && t.away.logo },
+      goals: { h: g.home, a: g.away }, ht: { h: s.home, a: s.away }, raw: it,
+    };
+  }
+  D.normFixture = normFixture;
+  const FINISHED = new Set(['FT', 'AET', 'PEN']);
+  function compactMatch(it, prev) {
+    const f = it.fixture || {}, g = it.goals || {}, s = (it.score || {}).halftime || {};
+    if (!FINISHED.has((f.status || {}).short) || g.home == null || g.away == null) return null;
+    // for AET/PEN use the 90-minute score when available
+    const ft = (it.score || {}).fulltime || {};
+    const hg = ft.home != null ? ft.home : g.home, ag = ft.away != null ? ft.away : g.away;
+    return { id: f.id, ts: (f.timestamp || 0) * 1000, h: it.teams.home.id, a: it.teams.away.id, hg, ag, hht: s.home, aht: s.away, ref: f.referee || null, comp: (it.league || {}).id, prev: !!prev, hn: it.teams.home.name, an: it.teams.away.name };
+  }
+
+  // ------------------------------------------------ schedule of a day
+  D.getDay = async function (dateStr, force) {
+    const r = await get(`/fixtures?date=${dateStr}&timezone=Europe/Athens`, { ttl: 10 * 60000, fresh: !!force });
+    return r.response.map(normFixture);
+  };
+
+  // ------------------------------------------------ main loader
+  const POS = { Goalkeeper: 'G', Defender: 'D', Midfielder: 'M', Attacker: 'F', G: 'G', D: 'D', M: 'M', F: 'F' };
+  const toNum = (v) => { if (v == null) return 0; const n = parseFloat(String(v).replace('%', '')); return isFinite(n) ? n : 0; };
+
+  async function loadPlayers(teamId, season, pages) {
+    const out = new Map();
+    for (let page = 1; page <= pages; page++) {
+      const r = await get(`/players?team=${teamId}&season=${season}&page=${page}`, { ttl: 6 * 3600000 });
+      for (const it of r.response) {
+        const pl = it.player || {};
+        let min = 0, goals = 0, assists = 0, apps = 0, rating = 0, rn = 0, saves = 0, pos = null;
+        for (const st of it.statistics || []) {
+          if (st.team && st.team.id !== teamId) continue;
+          const gm = st.games || {};
+          min += gm.minutes || 0; apps += gm.appearences || 0; pos = pos || POS[gm.position];
+          goals += (st.goals || {}).total || 0; assists += (st.goals || {}).assists || 0; saves += (st.goals || {}).saves || 0;
+          if (gm.rating) { rating += parseFloat(gm.rating) * (gm.minutes || 1); rn += gm.minutes || 1; }
+        }
+        const prev = out.get(pl.id);
+        if (prev) { prev.min += min; prev.goals += goals; prev.assists += assists; prev.apps += apps; } else out.set(pl.id, { id: pl.id, name: pl.name, pos: pos || 'M', min, goals, assists, apps, rating: rn ? rating / rn : null, saves });
+      }
+      if (!r.paging || page >= (r.paging.total || 1)) break;
+    }
+    return [...out.values()];
+  }
+
+  function teamStatsOf(resp) {
+    if (!resp) return null;
+    const played = ((resp.fixtures || {}).played || {}).total || 0;
+    const sum = (o) => Object.values(o || {}).reduce((s, x) => s + ((x && x.total) || 0), 0);
+    const pen = resp.penalty || {};
+    return {
+      played, form: resp.form || '', yellow: sum((resp.cards || {}).yellow), red: sum((resp.cards || {}).red),
+      penWon: pen.total != null ? pen.total : null, cleanSheet: ((resp.clean_sheet || {}).total) || 0, failed: ((resp.failed_to_score || {}).total) || 0,
+      formations: (resp.lineups || []).map((x) => ({ f: x.formation, n: x.played })),
+    };
+  }
+
+  /* Loads everything for one fixture. fix = normalised fixture from getDay. opts: {depth:'light'|'normal'|'deep', force, onTask(task)} */
+  D.loadMatch = async function (fix, opts) {
+    opts = Object.assign({ depth: 'deep', force: false, onTask: () => {} }, opts || {});
+    const L = fix.league, season = L.season, hid = fix.home.id, aid = fix.away.id;
+    const depth = opts.depth, deep = depth === 'deep', normal = depth !== 'light';
+    const ctx = { fixture: fix, tasks: [], freshness: {}, calls0: state.calls };
+    const seq = [];
+    const task = async (id, label, fn, cfg) => {
+      cfg = cfg || {};
+      const t = { id, label, status: 'run', note: '' };
+      ctx.tasks.push(t); opts.onTask(t);
+      try {
+        const v = await fn();
+        if (v === null || v === undefined) { t.status = 'skip'; t.note = cfg.skipNote || 'δεν υπάρχουν δεδομένα'; } else { t.status = 'ok'; t.note = cfg.okNote ? cfg.okNote(v) : ''; ctx.freshness[id] = Date.now(); }
+        t.value = v;
+        opts.onTask(t);
+        return v;
+      } catch (e) {
+        t.status = 'fail'; t.note = String(e.message || e).slice(0, 140); opts.onTask(t);
+        return null;
+      }
+    };
+    const fresh = true;   // volatile data is always re-read right before the run
+    const stable = (ttl) => ({ ttl, fresh: opts.force });
+
+    // --- group 1 (parallel): fixture detail, league results, team histories, standings
+    const [detail, lgNow, tmH, tmA, stand] = await Promise.all([
+      task('fixture', 'Στοιχεία αγώνα (ώρα, διαιτητής, ενδεκάδες)', async () => {
+        const r = await get(`/fixtures?id=${fix.id}&timezone=Europe/Athens`, { fresh });
+        return r.response && r.response[0] ? r.response[0] : null;
+      }, { okNote: (v) => (v.lineups && v.lineups.length >= 2 ? 'με επίσημες ενδεκάδες' : 'χωρίς ενδεκάδες ακόμα') }),
+      task('league', 'Αποτελέσματα λίγκας τρέχουσας σεζόν', async () => {
+        const name = `lg:${L.id}:${season}`;
+        const c = !opts.force && cget(name, 3 * 3600000);
+        if (c) return c;
+        const r = await api(`/fixtures?league=${L.id}&season=${season}&status=FT-AET-PEN`);
+        const ms = r.response.map((x) => compactMatch(x, false)).filter(Boolean);
+        cset(name, ms, true);
+        return ms;
+      }, { okNote: (v) => v.length + ' αγώνες' }),
+      task('teamH', `Τελευταίοι αγώνες ${fix.home.name}`, async () => {
+        const r = await get(`/fixtures?team=${hid}&last=30`, stable(3 * 3600000));
+        return r.response.map((x) => compactMatch(x, false)).filter(Boolean);
+      }, { okNote: (v) => v.length + ' αγώνες' }),
+      task('teamA', `Τελευταίοι αγώνες ${fix.away.name}`, async () => {
+        const r = await get(`/fixtures?team=${aid}&last=30`, stable(3 * 3600000));
+        return r.response.map((x) => compactMatch(x, false)).filter(Boolean);
+      }, { okNote: (v) => v.length + ' αγώνες' }),
+      normal ? task('standings', 'Βαθμολογία', async () => {
+        const r = await get(`/standings?league=${L.id}&season=${season}`, stable(3 * 3600000));
+        const rows = [];
+        for (const lg of r.response || []) for (const grp of (lg.league || {}).standings || []) for (const row of grp) rows.push(row);
+        const pick = (id) => { const x = rows.find((y) => y.team && y.team.id === id); return x ? { rank: x.rank, pts: x.points, gd: x.goalsDiff, played: (x.all || {}).played, form: x.form, desc: x.description } : null; };
+        const h = pick(hid), a = pick(aid);
+        return h || a ? { home: h, away: a, size: rows.length } : null;
+      }, { skipNote: 'δεν βρέθηκε βαθμολογία (κύπελλο;)' }) : Promise.resolve(null),
+    ]);
+    if (detail) {
+      const nf = normFixture(detail);
+      ctx.fixture = Object.assign({}, fix, { referee: nf.referee || fix.referee, venue: nf.venue.city ? nf.venue : fix.venue, status: nf.status, ts: nf.ts || fix.ts, goals: nf.goals });
+      if (detail.lineups && detail.lineups.length >= 2) {
+        const mk = (x) => ({ formation: x.formation, coach: x.coach && x.coach.name, xi: (x.startXI || []).map((p) => ({ id: p.player.id, name: p.player.name, pos: POS[p.player.pos] || 'M', num: p.player.number })), subs: (x.substitutes || []).map((p) => ({ id: p.player.id, name: p.player.name, pos: POS[p.player.pos] || 'M', num: p.player.number })) });
+        const hx = detail.lineups.find((x) => x.team.id === hid), ax = detail.lineups.find((x) => x.team.id === aid);
+        if (hx && ax) ctx.lineups = { home: mk(hx), away: mk(ax) };
+      }
+    }
+    const kick = ctx.fixture.ts || Date.now();
+    ctx.matches = lgNow || [];
+    // early in the season: add last season too
+    const perTeam = (id) => ctx.matches.filter((m) => m.h === id || m.a === id).length;
+    if (!L.type || L.type !== 'Cup') {
+      if (lgNow && Math.min(perTeam(hid), perTeam(aid)) < 12) {
+        const prev = await task('prev', 'Αποτελέσματα προηγούμενης σεζόν (αρχή σεζόν)', async () => {
+          const name = `lg:${L.id}:${season - 1}`;
+          const c = !opts.force && cget(name, 14 * DAY);
+          if (c) return c;
+          const r = await api(`/fixtures?league=${L.id}&season=${season - 1}&status=FT-AET-PEN`);
+          const ms = r.response.map((x) => compactMatch(x, true)).filter(Boolean);
+          cset(name, ms, true);
+          return ms;
+        }, { okNote: (v) => v.length + ' αγώνες' });
+        if (prev) ctx.matches = prev.map((m) => Object.assign({}, m, { prev: true })).concat(ctx.matches);
+      }
+    }
+    ctx.teamMatches = { home: tmH || [], away: tmA || [] };
+    const before = (arr) => (arr || []).filter((m) => m.ts < kick).sort((x, y) => x.ts - y.ts);
+    const rec = (arr, id) => before(arr).slice(-10).map((m) => ({ ts: m.ts, home: m.h === id, gf: m.h === id ? m.hg : m.ag, ga: m.h === id ? m.ag : m.hg, opp: m.h === id ? m.a : m.h, comp: m.comp, id: m.id }));
+    if (tmH && tmA) ctx.recent = { home: rec(tmH, hid), away: rec(tmA, aid) };
+    ctx.standings = stand || null;
+    // finished matches only get past this point for completed fixtures; for finished games we still simulate pre-match
+    // --- group 2 (parallel): volatile + enrichment
+    const g2 = [];
+    g2.push(task('injuries', 'Τραυματισμοί & τιμωρίες', async () => {
+      const r = await get(`/injuries?fixture=${fix.id}`, { fresh });
+      return r.response.map((x) => ({ pid: x.player.id, name: x.player.name, tid: x.team.id, type: x.player.type, reason: x.player.reason }));
+    }, { okNote: (v) => v.length + ' παίκτες', skipNote: 'δεν υπάρχουν καταγεγραμμένες απουσίες' }).then((v) => { ctx.injuries = v && v.length ? v : v ? [] : null; }));
+    g2.push(task('odds', 'Αποδόσεις bookmakers', async () => {
+      const r = await get(`/odds?fixture=${fix.id}`, { fresh });
+      let resp = r.response || [];
+      if (r.paging && r.paging.total > 1) { try { const r2 = await get(`/odds?fixture=${fix.id}&page=2`, { fresh }); resp = resp.concat(r2.response || []); } catch {} }
+      if (!resp.length) return null;
+      return root.SimMarkets.parseOdds(resp);
+    }, { okNote: (v) => v.nBooks + ' bookmakers · ' + Object.keys(v.best).length + ' αγορές', skipNote: 'οι αποδόσεις δεν έχουν ανοίξει ακόμα' }).then((v) => { ctx.odds = v; }));
+    if (normal) {
+      g2.push(task('predictions', 'Πρόβλεψη API-Football (δεύτερη γνώμη)', async () => {
+        const r = await get(`/predictions?fixture=${fix.id}`, { fresh });
+        const p = r.response && r.response[0];
+        if (!p) return null;
+        const pc = p.predictions.percent || {};
+        return { home: toNum(pc.home) / 100, draw: toNum(pc.draw) / 100, away: toNum(pc.away) / 100, advice: p.predictions.advice, underOver: p.predictions.under_over, goalsH: p.predictions.goals && p.predictions.goals.home, goalsA: p.predictions.goals && p.predictions.goals.away };
+      }).then((v) => { ctx.apiPred = v; }));
+      g2.push(task('h2h', 'Ιστορικό μεταξύ τους', async () => {
+        const r = await get(`/fixtures/headtohead?h2h=${hid}-${aid}&last=10`, stable(12 * 3600000));
+        return r.response.filter((x) => FINISHED.has((x.fixture.status || {}).short)).map((x) => ({ ts: x.fixture.timestamp * 1000, hid: x.teams.home.id, aid: x.teams.away.id, hg: x.goals.home, ag: x.goals.away }));
+      }, { okNote: (v) => v.length + ' αγώνες' }).then((v) => { ctx.h2h = v && v.length ? v : null; }));
+      g2.push(task('teamstats', 'Στατιστικά σεζόν ομάδων (κάρτες, πέναλτι)', async () => {
+        const [a, b] = await Promise.all([hid, aid].map((id) => get(`/teams/statistics?league=${L.id}&season=${season}&team=${id}`, stable(6 * 3600000))));
+        const h = teamStatsOf(a.response), w = teamStatsOf(b.response);
+        return h && w && h.played && w.played ? { home: h, away: w } : null;
+      }, { skipNote: 'δεν υπάρχουν στατιστικά (κύπελλο;)' }).then((v) => { ctx.teamStats = v; }));
+      g2.push(task('players', 'Παίκτες (λεπτά, γκολ, ασίστ)', async () => {
+        const pages = deep ? 3 : 2;
+        const [h, w] = await Promise.all([loadPlayers(hid, season, pages), loadPlayers(aid, season, pages)]);
+        return h.length && w.length ? { home: h, away: w } : null;
+      }, { okNote: (v) => v.home.length + '+' + v.away.length + ' παίκτες' }).then((v) => { ctx.players = v; }));
+    }
+    g2.push(task('weather', 'Καιρός στο γήπεδο', () => D.weather(ctx.fixture, kick), { skipNote: 'δεν βρέθηκε πρόγνωση (πολύ νωρίς ή άγνωστη πόλη)', okNote: (v) => `${Math.round(v.tempC)}°C, άνεμος ${Math.round(v.windKmh)} km/h, βροχή ${v.precipMm.toFixed(1)} mm/ώρα` }).then((v) => { ctx.weather = v; }));
+    if (deep) {
+      g2.push(task('news', 'Τελευταία νέα (Google News / GDELT)', async () => {
+        const [h, a] = await Promise.all([D.news(fix.home.name), D.news(fix.away.name)]);
+        if (!h && !a) return null;
+        return { home: h || [], away: a || [] };
+      }, { skipNote: 'δεν φορτώθηκαν (ο browser μπλόκαρε την πηγή)', okNote: (v) => v.home.length + v.away.length + ' τίτλοι' }).then((v) => { ctx.news = v; }));
+    }
+    await Promise.all(g2);
+
+    // --- group 3 (deep): corners of recent matches, referee history
+    if (deep) {
+      await Promise.all([
+        task('corners', 'Κόρνερ τελευταίων αγώνων', async () => {
+          const pick = (arr) => before(arr).slice(-8);
+          const stat = async (m) => {
+            const name = `fs:${m.id}`;
+            const c = cget(name, 365 * DAY);
+            if (c) return c;
+            const r = await api(`/fixtures/statistics?fixture=${m.id}`);
+            const o = { c: {}, y: {}, r: {}, sh: {} };
+            for (const t of r.response || []) {
+              for (const s of t.statistics || []) {
+                if (s.type === 'Corner Kicks') o.c[t.team.id] = toNum(s.value);
+                if (s.type === 'Yellow Cards') o.y[t.team.id] = toNum(s.value);
+                if (s.type === 'Red Cards') o.r[t.team.id] = toNum(s.value);
+                if (s.type === 'Shots on Goal') o.sh[t.team.id] = toNum(s.value);
+              }
+            }
+            if (Object.keys(o.c).length >= 2) cset(name, o, true);
+            return o;
+          };
+          const agg = async (arr, id) => {
+            let f = 0, ag = 0, n = 0;
+            const sts = await Promise.all(pick(arr).map(async (m) => { try { return [m, await stat(m)]; } catch { return null; } }));
+            for (const x of sts) {
+              if (!x) continue;
+              const [m, o] = x, opp = m.h === id ? m.a : m.h;
+              if (o.c[id] == null || o.c[opp] == null) continue;
+              f += o.c[id]; ag += o.c[opp]; n++;
+            }
+            return { for: f, against: ag, n };
+          };
+          const [h, a] = [await agg(tmH, hid), await agg(tmA, aid)];
+          return h.n >= 3 && a.n >= 3 ? { home: h, away: a } : null;
+        }, { okNote: (v) => `${v.home.n}+${v.away.n} αγώνες με στατιστικά` }).then((v) => { ctx.corners = v; }),
+        task('referee', ctx.fixture.referee ? `Διαιτητής ${ctx.fixture.referee}: κάρτες & πέναλτι` : 'Διαιτητής', async () => {
+          if (!ctx.fixture.referee) return null;
+          const rm = ctx.matches.filter((m) => m.ref === ctx.fixture.referee && m.ts < kick).sort((x, y) => y.ts - x.ts).slice(0, 6);
+          if (rm.length < 2) return null;
+          let y = 0, r = 0, pen = 0, n = 0;
+          const evs = await Promise.all(rm.map(async (m) => {
+            const name = `fe:${m.id}`;
+            const c = cget(name, 365 * DAY);
+            if (c) return c;
+            try {
+              const res = await api(`/fixtures/events?fixture=${m.id}`);
+              const o = { y: 0, r: 0, pen: 0 };
+              for (const e of res.response || []) {
+                if (e.type === 'Card') { if (/yellow/i.test(e.detail) && !/second/i.test(e.detail)) o.y++; else if (/red|second/i.test(e.detail)) o.r++; }
+                if (e.type === 'Goal' && /penalty/i.test(e.detail)) o.pen++;
+                if (e.type === 'Goal' && /missed penalty/i.test(e.detail)) o.pen++;
+                if (e.type === 'Var' && /penalty/i.test(e.detail || '')) o.pen += 0;
+              }
+              cset(name, o, true);
+              return o;
+            } catch { return null; }
+          }));
+          for (const o of evs) if (o) { y += o.y; r += o.r; pen += o.pen; n++; }
+          return n >= 2 ? { n, yellow: y, red: r, pen } : null;
+        }, { skipNote: 'δεν έχει ανακοινωθεί ή δεν υπάρχει ιστορικό', okNote: (v) => v.n + ' αγώνες' }).then((v) => { ctx.refCards = v; }),
+      ]);
+    }
+    ctx.calls = state.calls - ctx.calls0;
+    ctx.loadedAt = Date.now();
+    ctx.remaining = state.remaining;
+    return ctx;
+  };
+
+  // ------------------------------------------------ weather (Open-Meteo, no key)
+  async function fetchJson(url, ms) {
+    const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const to = setTimeout(() => ctl && ctl.abort(), ms || 9000);
+    try {
+      const r = await fetch(url, ctl ? { signal: ctl.signal } : {});
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    } finally { clearTimeout(to); }
+  }
+  D.weather = async function (fix, kick) {
+    const city = fix.venue && fix.venue.city;
+    if (!city) return null;
+    const ahead = (kick - Date.now()) / DAY;
+    if (ahead > 15.5 || ahead < -0.2) return null;
+    let geo = cget('geo:' + city, 90 * DAY);
+    if (!geo) {
+      const j = await fetchJson(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=6&language=en&format=json`);
+      const rs = j.results || [];
+      const country = (fix.league.country || '').toLowerCase();
+      const pick = rs.find((x) => (x.country || '').toLowerCase() === country) || rs[0];
+      if (!pick) return null;
+      geo = { lat: pick.latitude, lon: pick.longitude, name: pick.name, country: pick.country };
+      cset('geo:' + city, geo, true);
+    }
+    const j = await fetchJson(`https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}&hourly=temperature_2m,precipitation,wind_speed_10m,wind_gusts_10m,relative_humidity_2m,weather_code&timezone=UTC&forecast_days=16&wind_speed_unit=kmh`);
+    const h = j.hourly;
+    if (!h || !h.time) return null;
+    const idx = [];
+    for (let i = 0; i < h.time.length; i++) { const t = Date.parse(h.time[i] + 'Z'); if (t >= kick - 30 * 60000 && t <= kick + 100 * 60000) idx.push(i); }
+    if (!idx.length) return null;
+    const av = (a) => idx.reduce((s, i) => s + (a[i] || 0), 0) / idx.length, mx = (a) => Math.max(...idx.map((i) => a[i] || 0));
+    return { tempC: av(h.temperature_2m), precipMm: av(h.precipitation), windKmh: mx(h.wind_speed_10m), gustKmh: mx(h.wind_gusts_10m), humidity: av(h.relative_humidity_2m), code: h.weather_code[idx[Math.floor(idx.length / 2)]], place: geo.name, forecastDaysAhead: ahead };
+  };
+
+  // ------------------------------------------------ news (best effort; browsers may block cross-origin feeds)
+  D.news = async function (team) {
+    const cached = cget('news:' + team, 20 * 60000);
+    if (cached !== undefined) return cached;
+    let items = null;
+    const q = `"${team}" (τραυματισμός OR απουσίες OR ενδεκάδα OR injury OR lineup OR suspended)`;
+    try {
+      const rss = `https://news.google.com/rss/search?q=${encodeURIComponent(q + ' when:3d')}&hl=el&gl=GR&ceid=GR:el`;
+      const j = await fetchJson('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(rss), 9000);
+      if (j && j.items && j.items.length) items = j.items.slice(0, 6).map((x) => ({ title: String(x.title || '').replace(/\s+-\s+[^-]+$/, ''), source: (x.author || (/ - ([^-]+)$/.exec(x.title || '') || [])[1] || '').trim(), link: x.link, ts: Date.parse(String(x.pubDate || '').replace(' ', 'T') + 'Z') || 0 }));
+    } catch {}
+    if (!items) {
+      try {
+        const j = await fetchJson(`https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent('"' + team + '" (injury OR lineup OR suspended OR τραυματισμός)')}&mode=ArtList&maxrecords=6&format=json&timespan=3d&sort=DateDesc`, 9000);
+        if (j && j.articles && j.articles.length) items = j.articles.slice(0, 6).map((x) => ({ title: x.title, source: x.domain, link: x.url, ts: Date.parse((x.seendate || '').replace(/^(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)(\d\d)Z$/, '$1-$2-$3T$4:$5:$6Z')) || 0 }));
+      } catch {}
+    }
+    if (items) cset('news:' + team, items, false);
+    return items;
+  };
+  D.newsLink = (team) => 'https://news.google.com/search?q=' + encodeURIComponent(team + ' τραυματισμοί απουσίες') + '&hl=el&gl=GR&ceid=GR%3Ael';
+
+  /* estimate of API calls for a depth (for the quota guard) */
+  D.estimate = (depth) => (depth === 'light' ? 8 : depth === 'normal' ? 18 : 44);
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = D; else root.SimData = D;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+'use strict';
+/* "Watch the match" view: replays one simulated match minute by minute with Greek commentary, player names,
+   live stats, a pressure strip and playback controls (Football-Manager style). The match itself is produced by
+   Sim.record(); this file only presents it. */
+(function (root) {
+  const W = {};
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const rngOf = (seed) => root.Sim.rng(seed >>> 0);
+  const pickR = (arr, r) => arr[Math.floor(r() * arr.length)];
+
+  // ------------------------------------------------ squads
+  function squad(ctx, side, absentIds) {
+    const lu = ctx.lineups && ctx.lineups[side];
+    const pl = ((ctx.players && ctx.players[side]) || []).filter((p) => !absentIds.has(p.id));
+    const goalsTot = Math.max(1, pl.reduce((s, p) => s + (p.goals || 0), 0));
+    const byId = new Map(((ctx.players && ctx.players[side]) || []).map((p) => [p.id, p]));
+    const enrich = (p) => Object.assign({ goals: 0, assists: 0, min: 0 }, byId.get(p.id) || {}, p, { share: ((byId.get(p.id) || {}).goals || 0) / goalsTot });
+    let xi, subs;
+    if (lu && lu.xi && lu.xi.length >= 9) { xi = lu.xi.map(enrich); subs = (lu.subs || []).map(enrich); } else if (pl.length >= 11) {
+      const sorted = [...pl].sort((a, b) => (b.min || 0) - (a.min || 0));
+      const take = (pos, n) => sorted.filter((p) => p.pos === pos).slice(0, n);
+      xi = [...take('G', 1), ...take('D', 4), ...take('M', 4), ...take('F', 2)].map(enrich);
+      const ids = new Set(xi.map((p) => p.id));
+      subs = sorted.filter((p) => !ids.has(p.id)).slice(0, 9).map(enrich);
+    } else {
+      const name = side === 'home' ? ctx.fixture.home.name : ctx.fixture.away.name;
+      const posOf = ['G', 'D', 'D', 'D', 'D', 'M', 'M', 'M', 'F', 'F', 'F'];
+      xi = posOf.map((pos, i) => ({ name: `${name} #${i + 1}`, pos, share: 0 }));
+      subs = ['G', 'D', 'M', 'M', 'F', 'F'].map((pos, i) => ({ name: `${name} #${12 + i}`, pos, share: 0 }));
+    }
+    return { xi, subs };
+  }
+  function wpick(list, wf, r) {
+    let tot = 0; const ws = list.map((p) => { const w = Math.max(0, wf(p)); tot += w; return w; });
+    if (tot <= 0) return list[Math.floor(r() * list.length)];
+    let x = r() * tot;
+    for (let i = 0; i < list.length; i++) { x -= ws[i]; if (x <= 0) return list[i]; }
+    return list[list.length - 1];
+  }
+  const W_SCORE = (p) => ({ F: 1, M: 0.42, D: 0.12, G: 0 }[p.pos] || 0.3) * (1 + 7 * (p.share || 0));
+  const W_SHOT = (p) => ({ F: 1, M: 0.7, D: 0.15, G: 0.01 }[p.pos] || 0.3) * (1 + 3 * (p.share || 0));
+  const W_CARD = (p) => ({ D: 1.1, M: 1.1, F: 0.55, G: 0.08 }[p.pos] || 0.5);
+  const W_ASSIST = (p) => ({ M: 1, F: 0.8, D: 0.4, G: 0.01 }[p.pos] || 0.3);
+
+  // ------------------------------------------------ commentary
+  const TX = {
+    goal: [
+      (p, T) => `ΓΚΟΟΟΛ! Ο ${p} σκοράρει για την ${T}!`,
+      (p, T) => `Γκολ! Ο ${p} βρίσκει τα δίχτυα και η ${T} πανηγυρίζει.`,
+      (p, T) => `Δεν το χάνει ο ${p}! Σκόρερ για την ${T}.`,
+      (p, T) => `Ο ${p} στέλνει την μπάλα στα δίχτυα για την ${T}!`,
+    ],
+    shot_off: [(p) => `Σουτ του ${p} και η μπάλα περνά άουτ.`, (p) => `Ο ${p} προσπαθεί από θέση βολής, αλλά στέλνει πάνω από το οριζόντιο.`, (p) => `Άστοχο το σουτ του ${p}, ξυστά στο δοκάρι.`],
+    shot_block: [(p) => `Μπλοκάρεται το σουτ του ${p}.`, (p) => `Ο αμυντικός μπροστά στο σουτ του ${p}!`],
+    save: [(p) => `Σουτ του ${p} στην εστία — σπουδαία απόκρουση!`, (p) => `Ο τερματοφύλακας διώχνει το πλασέ του ${p}.`, (p) => `Δυνατό σουτ του ${p}, ο γκολκίπερ είναι εκεί.`],
+    corner: [(T) => `Κόρνερ για την ${T}.`, (T) => `Η ${T} κερδίζει κόρνερ.`],
+    yellow: [(p, T) => `Κίτρινη κάρτα για τον ${p} (${T}).`, (p, T) => `Ο διαιτητής δείχνει κίτρινη στον ${p} (${T}).`],
+    red: [(p, T) => `ΚΟΚΚΙΝΗ κάρτα για τον ${p} (${T})! Η ομάδα συνεχίζει με 10 παίκτες.`],
+    pen_award: [(T) => `Πέναλτι για την ${T}! Ο διαιτητής δείχνει την άσπρη βούλα.`],
+    pen_save: [(p) => `Ο τερματοφύλακας αποκρούει το πέναλτι του ${p}!`],
+    pen_miss: [(p) => `Χάνει το πέναλτι ο ${p}!`],
+    foul: [(T) => `Φάουλ σε βάρος της ${T}.`, (T) => `Διακοπή για φάουλ εις βάρος της ${T}.`],
+    offside: [(T) => `Οφσάιντ για την ${T}.`],
+    sub: [(p, T, q) => `Αλλαγή στην ${T}: μπαίνει ο ${q}, βγαίνει ο ${p}.`],
+    injury: [(p, T) => `Διακοπή: ο ${p} (${T}) πονάει και παίρνει ιατρική φροντίδα.`],
+    press: [(T) => `Η ${T} πιέζει ψηλά και κρατά την μπάλα στο μισό του αντιπάλου.`, (T) => `Η ${T} παίρνει τον έλεγχο και ψάχνει χώρο.`, (T) => `Σερί επιθέσεων της ${T}, η άμυνα αντέχει.`],
+  };
+  const ICON = { goal: '⚽', shot_off: '💨', shot_block: '🛡', save: '🧤', corner: '🚩', yellow: '🟨', red: '🟥', pen_award: '🎯', pen_save: '🧤', pen_miss: '❌', foul: '✋', offside: '🚩', sub: '🔄', injury: '🩹', press: '➡', kickoff: '▶', restart: '▶', ht: '⏸', ft: '🏁' };
+  const KEY = new Set(['goal', 'red', 'pen_award', 'pen_save', 'pen_miss', 'ht', 'ft', 'kickoff', 'restart']);
+  const MINOR = new Set(['foul', 'offside', 'press']);
+
+  /* Build the narrated timeline from a recording. */
+  W.narrate = function (rec, ctx, opt) {
+    opt = opt || {};
+    const r = rngOf(rec.seed + 17);
+    const H = ctx.fixture.home.name, A = ctx.fixture.away.name, TN = [H, A];
+    const absentIds = new Set();
+    const abs = opt.absences || { home: { list: [] }, away: { list: [] } };
+    for (const side of ['home', 'away']) for (const x of abs[side].list) if (x.w >= 1) absentIds.add(x.id);
+    const sq = [squad(ctx, 'home', absentIds), squad(ctx, 'away', absentIds)];
+    const onPitch = [sq[0].xi.slice(), sq[1].xi.slice()], bench = [sq[0].subs.slice(), sq[1].subs.slice()];
+    const reds = [new Set(), new Set()], yel = [new Map(), new Map()];
+    const lines = [], extra = rec.snaps.map(() => ({ fH: 0, fA: 0, oH: 0, oA: 0 }));
+    const cum = { fH: 0, fA: 0, oH: 0, oA: 0 };
+    let lastEventSnap = -9, scorers = [], cards = [], nextPress = 6;
+    const minOf = (e) => (e.x ? `${e.m}+${e.x}'` : `${e.m}'`);
+    const cumAt = new Array(rec.snaps.length).fill(null);
+    let evi = 0;
+    const evs = rec.events;
+    for (let s = 0; s < rec.snaps.length; s++) {
+      const sn = rec.snaps[s];
+      let any = false;
+      while (evi < evs.length && (evs[evi].s === s || evs[evi].s === undefined && false)) {
+        const e = evs[evi++];
+        const t = e.t, T = t >= 0 ? TN[t] : '';
+        let text = '', player = null, extraTxt = '', cls = '';
+        const alive = (side) => onPitch[side].filter((p) => !reds[side].has(p));
+        switch (e.type) {
+          case 'kickoff': text = `Ξεκινά ο αγώνας! ${H} – ${A}${ctx.fixture.venue && ctx.fixture.venue.name ? ' στο ' + ctx.fixture.venue.name : ''}.`; break;
+          case 'restart': text = 'Ξεκινά το δεύτερο ημίχρονο.'; break;
+          case 'ht': text = `Ημίχρονο: ${H} ${rec.snaps[s].gH} – ${rec.snaps[s].gA} ${A}.`; break;
+          case 'ft': text = `Τέλος αγώνα: ${H} ${rec.result.hg} – ${rec.result.ag} ${A}.`; break;
+          case 'goal': {
+            player = wpick(alive(t), W_SCORE, r);
+            text = pickR(TX.goal, r)(player.name, T);
+            { const mine = t ? sn.gA : sn.gH, theirs = t ? sn.gH : sn.gA;
+              if (mine + theirs === 1) extraTxt += ' Ανοίγει το σκορ.'; else if (mine === theirs) extraTxt += ' Ισοφάριση!'; else if (mine - theirs === 1) extraTxt += ' Περνά μπροστά.'; else if (mine - theirs >= 3) extraTxt += ' Το παιχνίδι φαίνεται να κλείνει.'; }
+            if (e.pen) text = `ΓΚΟΛ από πέναλτι! Ο ${player.name} ευστοχεί για την ${T}.`;
+            else if (r() < 0.62) { const q = wpick(alive(t).filter((p) => p !== player), W_ASSIST, r); if (q) extraTxt = ` Ασίστ: ${q.name}.`; }
+            if (e.xg > 0.45 && !e.pen) extraTxt += ' Πολύ μεγάλη ευκαιρία, δύσκολο να χαθεί.'; else if (e.xg < 0.06 && !e.pen) extraTxt += ' Απίθανο γκολ από δύσκολη θέση!';
+            scorers.push({ t, name: player.name, m: e.m, x: e.x, pen: !!e.pen });
+            break;
+          }
+          case 'shot_off': case 'shot_block': case 'save': player = wpick(alive(t), W_SHOT, r); text = pickR(TX[e.type], r)(player.name, T); break;
+          case 'corner': text = pickR(TX.corner, r)(T); break;
+          case 'pen_award': text = pickR(TX.pen_award, r)(T); break;
+          case 'pen_save': case 'pen_miss': player = wpick(alive(t), W_SCORE, r); text = pickR(TX[e.type], r)(player.name, T); break;
+          case 'yellow': {
+            const cand = alive(t).filter((p) => p.pos !== 'G' || r() < 0.1);
+            player = wpick(cand.length ? cand : alive(t), W_CARD, r);
+            text = pickR(TX.yellow, r)(player.name, T);
+            yel[t].set(player, (yel[t].get(player) || 0) + 1);
+            cards.push({ t, name: player.name, m: e.m, x: e.x, c: 'y' });
+            break;
+          }
+          case 'red': {
+            const yellowed = [...yel[t].keys()].filter((p) => !reds[t].has(p));
+            player = yellowed.length && r() < 0.35 ? yellowed[0] : wpick(alive(t).filter((p) => p.pos !== 'G'), W_CARD, r);
+            reds[t].add(player);
+            text = pickR(TX.red, r)(player.name, T) + (yel[t].get(player) ? ' (δεύτερη κίτρινη)' : '');
+            cards.push({ t, name: player.name, m: e.m, x: e.x, c: 'r' });
+            break;
+          }
+          case 'foul': text = pickR(TX.foul, r)(T); cum[t ? 'fA' : 'fH']++; break;
+          case 'offside': text = pickR(TX.offside, r)(T); cum[t ? 'oA' : 'oH']++; break;
+          case 'sub': {
+            const out = wpick(alive(t).filter((p) => p.pos !== 'G'), (p) => ({ F: 1.2, M: 1, D: 0.7 }[p.pos] || 0.5), r);
+            const inn = bench[t].length ? bench[t].splice(Math.floor(r() * bench[t].length), 1)[0] : { name: 'αναπληρωματικός', pos: out.pos };
+            if (out) { onPitch[t][onPitch[t].indexOf(out)] = inn; text = pickR(TX.sub, r)(out.name, T, inn.name); } else text = `Αλλαγή στην ${T}.`;
+            break;
+          }
+          case 'injury': player = wpick(alive(t).filter((p) => p.pos !== 'G'), () => 1, r); text = pickR(TX.injury, r)(player ? player.name : 'ένας παίκτης', T); break;
+          default: text = '';
+        }
+        if (!text) continue;
+        any = true; lastEventSnap = s;
+        lines.push({ s, e, h: e.h, m: e.m, x: e.x, min: minOf(e), type: e.type, t, icon: ICON[e.type] || '•', text: text + extraTxt, key: KEY.has(e.type), minor: MINOR.has(e.type), score: [sn.gH, sn.gA], xg: e.xg || null });
+      }
+      extra[s] = Object.assign({}, cum);
+      // soft pressure commentary
+      if (!any && s - lastEventSnap >= nextPress && Math.abs(sn.press) > 0.38 && sn.h) {
+        const t = sn.press > 0 ? 0 : 1;
+        lines.push({ s, e: { type: 'press' }, h: sn.h, m: sn.m, x: sn.x, min: sn.x ? `${sn.m}+${sn.x}'` : `${sn.m}'`, type: 'press', t, icon: ICON.press, text: pickR(TX.press, r)(TN[t]), key: false, minor: true, score: [sn.gH, sn.gA] });
+        lastEventSnap = s; nextPress = 5 + Math.floor(r() * 5);
+      }
+    }
+    return { lines, extra, scorers, cards };
+  };
+
+  // ------------------------------------------------ view
+  const css = `
+.sw{position:fixed;inset:0;z-index:40;background:var(--bg);overflow:auto;padding:max(10px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) 24px max(12px,env(safe-area-inset-left,0px))}
+.sw-top{display:flex;align-items:center;gap:8px;justify-content:space-between;margin-bottom:6px}
+.sw-score{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 12px;display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;text-align:center}
+.sw-score .tn{font-weight:700;font-size:15px;line-height:1.2}
+.sw-score .sc{font-size:34px;font-weight:800;letter-spacing:1px}
+.sw-score .clk{grid-column:1/-1;color:var(--green);font-weight:700}
+.sw-pitch{position:relative;margin:8px 0;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#1d5a33;aspect-ratio:100/58}
+.sw-pitch svg{position:absolute;inset:0;width:100%;height:100%}
+.sw-ball{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px rgba(0,0,0,.35);transition:left .45s ease,top .45s ease}
+.sw-ball.flash{animation:swflash .9s ease 1}
+@keyframes swflash{0%{box-shadow:0 0 0 2px rgba(0,0,0,.35)}40%{box-shadow:0 0 0 22px rgba(255,255,255,.35)}100%{box-shadow:0 0 0 2px rgba(0,0,0,.35)}}
+.sw-ctl{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0}
+.sw-ctl button.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.sw-scrub{flex:1;min-width:140px}
+.sw-cols{display:grid;grid-template-columns:1.25fr 1fr;gap:10px;align-items:start}
+@media (max-width:820px){.sw-cols{grid-template-columns:1fr}}
+.sw-feed{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 10px;max-height:56vh;overflow:auto}
+.sw-line{display:grid;grid-template-columns:46px 22px 1fr;gap:6px;padding:5px 0;border-bottom:1px solid var(--line);font-size:14px}
+.sw-line .mn{color:var(--muted);font-variant-numeric:tabular-nums}
+.sw-line.key{background:rgba(79,140,255,.10);margin:0 -10px;padding:6px 10px}
+.sw-line.goal{background:rgba(34,197,94,.14);font-weight:600}
+.sw-line.red{background:rgba(239,68,68,.14)}
+.sw-line.soft{color:var(--muted)}
+.sw-line .sub{display:block;font-size:12px;color:var(--muted);font-weight:400}
+.sw-stats{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.sw-stat{display:grid;grid-template-columns:42px 1fr 42px;gap:6px;align-items:center;font-size:13px;margin:5px 0}
+.sw-stat .l{text-align:right}.sw-stat .lab{grid-column:1/-1;text-align:center;color:var(--muted);font-size:11px;margin-bottom:-4px}
+.sw-mom{display:block;width:100%;height:60px;margin-top:6px;background:var(--panel2);border-radius:8px}
+.sw-sum{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:8px 0;font-size:13px}
+.sw-note{font-size:12px;color:var(--muted);margin:6px 0}
+`;
+
+  function pitchSvg() {
+    return `<svg viewBox="0 0 100 58" preserveAspectRatio="none"><g fill="none" stroke="rgba(255,255,255,.55)" stroke-width=".4"><rect x="1" y="1" width="98" height="56"/><line x1="50" y1="1" x2="50" y2="57"/><circle cx="50" cy="29" r="7"/><rect x="1" y="14" width="14" height="30"/><rect x="85" y="14" width="14" height="30"/><rect x="1" y="22" width="5" height="14"/><rect x="94" y="22" width="5" height="14"/></g>
+      <g fill="rgba(79,140,255,.18)"><rect id="swShadeH" x="50" y="1" width="0" height="56"/></g><g fill="rgba(245,158,11,.18)"><rect id="swShadeA" x="50" y="1" width="0" height="56"/></g></svg>`;
+  }
+
+  W.open = function (cfg) {
+    const { ctx, build, rec } = cfg;
+    const H = ctx.fixture.home.name, A = ctx.fixture.away.name;
+    const nar = W.narrate(rec, ctx, { absences: build.absences });
+    const snaps = rec.snaps;
+    let idx = 0, playing = false, timer = null, speed = 450, showMinor = true, shown = -1, autoHT = true;
+    if (!document.getElementById('swCss')) { const st = document.createElement('style'); st.id = 'swCss'; st.textContent = css; document.head.appendChild(st); }
+    const el = document.createElement('div');
+    el.className = 'sw'; el.id = 'simWatch';
+    el.innerHTML = `<div class="sw-top"><b>🎮 Προσομοίωση αγώνα (σενάριο ${rec.seed})</b><button data-sw="close">✕ Κλείσιμο</button></div>
+      <div class="sw-score"><div class="tn" id="swH">${esc(H)}</div><div class="sc" id="swSc">0 – 0</div><div class="tn" id="swA">${esc(A)}</div><div class="clk" id="swClk">0'</div></div>
+      <div class="sw-pitch">${pitchSvg()}<div class="sw-ball" id="swBall" style="left:50%;top:50%"></div></div>
+      <div class="sw-ctl"><button data-sw="play" id="swPlay">▶ Αναπαραγωγή</button>
+        <button data-sw="spd" data-v="900">Αργά</button><button data-sw="spd" data-v="450" class="on">Κανονικά</button><button data-sw="spd" data-v="140">Γρήγορα</button><button data-sw="spd" data-v="30">Turbo</button>
+        <button data-sw="end">⏭ Τέλος</button>
+        <input class="sw-scrub" id="swScrub" type="range" min="0" max="${snaps.length - 1}" value="0" aria-label="Χρονισμός"></div>
+      <div class="sw-ctl"><label class="muted"><input type="checkbox" id="swMinor" checked> Και μικρά περιστατικά (φάουλ, οφσάιντ)</label> <label class="muted"><input type="checkbox" id="swAuto" checked> Παύση στο ημίχρονο</label></div>
+      <div id="swBreak"></div>
+      <div class="sw-cols"><div class="sw-feed" id="swFeed"></div><div class="sw-stats" id="swStats"></div></div>
+      <p class="sw-note">Ένα από τα πολλά πιθανά σενάρια του μοντέλου — όχι πρόβλεψη του αποτελέσματος. Τα ονόματα των σκόρερ και των καρτών επιλέγονται τυχαία με βάση τη θέση και τα γκολ της σεζόν. Στατιστικά, κόρνερ, κάρτες και πέναλτι βγαίνουν από τις ίδιες παραμέτρους της προσομοίωσης.</p>`;
+    document.body.appendChild(el);
+    document.body.style.overflow = 'hidden';
+    const $ = (s) => el.querySelector(s);
+
+    function statRow(lab, a, b, fmt) {
+      const f = fmt || ((x) => x);
+      const tot = (+a || 0) + (+b || 0), w = tot > 0 ? (a / tot) * 100 : 50;
+      return `<div class="sw-stat"><div class="lab">${lab}</div><div class="l">${f(a)}</div><div class="track"><i class="h" style="width:${w}%"></i><i class="a" style="width:${100 - w}%"></i></div><div>${f(b)}</div></div>`;
+    }
+    function momentum(upto) {
+      const n = snaps.length, w = 300, h = 60;
+      let bars = '';
+      for (let i = 0; i <= upto; i++) {
+        const p = snaps[i].press, x = (i / n) * w, bw = Math.max(0.8, w / n - 0.2), hh = Math.min(27, Math.abs(p) * 27);
+        bars += `<rect x="${x.toFixed(1)}" y="${p >= 0 ? 30 - hh : 30}" width="${bw.toFixed(1)}" height="${hh.toFixed(1)}" fill="${p >= 0 ? '#4f8cff' : '#f59e0b'}"/>`;
+      }
+      let marks = '';
+      for (const l of nar.lines) if (l.s <= upto && l.type === 'goal') marks += `<circle cx="${((l.s / n) * w).toFixed(1)}" cy="${l.t === 0 ? 5 : 55}" r="3.2" fill="#22c55e"/>`;
+      const half = snaps.findIndex((s) => s.h === 2);
+      return `<svg class="sw-mom" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><line x1="0" y1="30" x2="${w}" y2="30" stroke="rgba(143,160,191,.5)" stroke-width=".6"/>${half > 0 ? `<line x1="${((half / n) * w).toFixed(1)}" y1="0" x2="${((half / n) * w).toFixed(1)}" y2="${h}" stroke="rgba(143,160,191,.4)" stroke-dasharray="2 2"/>` : ''}${bars}${marks}</svg>`;
+    }
+    function drawStats() {
+      const s = snaps[idx], ex = nar.extra[idx] || {};
+      const poss = Math.round(s.poss * 100);
+      const goalsList = nar.scorers.filter((g) => nar.lines.find((l) => l.type === 'goal' && l.s <= idx && l.t === g.t && l.m === g.m && l.x === g.x));
+      const cardsList = nar.cards.filter((c) => nar.lines.find((l) => (l.type === 'yellow' || l.type === 'red') && l.s <= idx && l.t === c.t && l.m === c.m && l.x === c.x));
+      const scorersTxt = (t) => goalsList.filter((g) => g.t === t).map((g) => `${esc(g.name)} ${g.m}${g.x ? '+' + g.x : ''}'${g.pen ? ' (π)' : ''}`).join(', ');
+      $('#swStats').innerHTML = statRow('Κατοχή', poss, 100 - poss, (x) => x + '%') + statRow('Τελικές', s.shH, s.shA) + statRow('Στην εστία', s.sotH, s.sotA)
+        + statRow('xG', s.xgH, s.xgA, (x) => (+x).toFixed(2)) + statRow('Κόρνερ', s.coH, s.coA) + statRow('Φάουλ', ex.fH || 0, ex.fA || 0) + statRow('Οφσάιντ', ex.oH || 0, ex.oA || 0)
+        + statRow('Κίτρινες', s.yH, s.yA) + statRow('Κόκκινες', s.rH, s.rA)
+        + momentum(idx)
+        + `<div class="sw-note">Μπάρα πίεσης: πάνω = ${esc(H)}, κάτω = ${esc(A)} · πράσινες τελείες = γκολ</div>`
+        + `<div class="sw-sum"><b>Σκόρερ</b><br>${esc(H)}: ${scorersTxt(0) || '—'}<br>${esc(A)}: ${scorersTxt(1) || '—'}${cardsList.length ? '<br><b>Κάρτες</b>: ' + cardsList.map((c) => (c.c === 'r' ? '🟥' : '🟨') + esc(c.name) + ' ' + c.m + "'").join(' · ') : ''}</div>`;
+    }
+    function lineHtml(l) {
+      const sc = l.type === 'goal' ? `<span class="sub">${esc(H)} ${l.score[0]} – ${l.score[1]} ${esc(A)}${l.xg ? ' · xG ' + l.xg.toFixed(2) : ''}</span>` : '';
+      return `<div class="sw-line${l.key ? ' key' : ''}${l.type === 'goal' ? ' goal' : ''}${l.type === 'red' ? ' red' : ''}${l.minor ? ' soft' : ''}" data-minor="${l.minor ? 1 : 0}"><div class="mn">${l.min}</div><div>${l.icon}</div><div>${esc(l.text)}${sc}</div></div>`;
+    }
+    function drawFeed() {
+      const feed = $('#swFeed');
+      feed.innerHTML = nar.lines.filter((l) => l.s <= idx && (showMinor || !l.minor)).slice().reverse().map(lineHtml).join('') || '<p class="muted">Ο αγώνας δεν έχει αρχίσει.</p>';
+    }
+    function updateBall() {
+      const s = snaps[idx], ball = $('#swBall');
+      let x = 50 + 34 * s.press + Math.sin(idx * 1.9) * 5, y = 50 + Math.sin(idx * 1.3 + 2) * 22;
+      const evs = nar.lines.filter((l) => l.s === idx);
+      const g = evs.find((l) => l.type === 'goal'), sh = evs.find((l) => ['shot_off', 'shot_block', 'save', 'pen_award'].includes(l.type));
+      if (g) { x = g.t === 0 ? 96 : 4; y = 50; ball.classList.remove('flash'); void ball.offsetWidth; ball.classList.add('flash'); } else if (sh) { x = sh.t === 0 ? 88 : 12; y = 38 + Math.sin(idx) * 14; }
+      ball.style.left = Math.max(3, Math.min(97, x)) + '%'; ball.style.top = Math.max(8, Math.min(92, y)) + '%';
+      const sh1 = $('#swShadeH'), sh2 = $('#swShadeA');
+      if (sh1) { const p = Math.max(0, s.press); sh1.setAttribute('x', 50); sh1.setAttribute('width', (p * 48).toFixed(1)); const q = Math.max(0, -s.press); sh2.setAttribute('x', (50 - q * 48).toFixed(1)); sh2.setAttribute('width', (q * 48).toFixed(1)); }
+    }
+    function drawHead() {
+      const s = snaps[idx];
+      $('#swSc').textContent = `${s.gH} – ${s.gA}`;
+      const last = idx >= snaps.length - 1;
+      $('#swClk').textContent = last ? 'Τελικό' : (s.x ? `${s.m}+${s.x}'` : `${s.m}'`) + (s.h === 1 ? ' · 1ο ημίχρονο' : ' · 2ο ημίχρονο');
+      $('#swScrub').value = idx;
+    }
+    function breakPanel() {
+      const box = $('#swBreak');
+      const ev = nar.lines.find((l) => l.type === 'ht');
+      const last = idx >= snaps.length - 1;
+      if (ev && idx === ev.s && !last) {
+        const s = snaps[idx];
+        box.innerHTML = `<div class="sw-sum"><b>⏸ Ημίχρονο: ${esc(H)} ${s.gH} – ${s.gA} ${esc(A)}</b><br>Τελικές ${s.shH}-${s.shA} (στην εστία ${s.sotH}-${s.sotA}) · κόρνερ ${s.coH}-${s.coA} · κίτρινες ${s.yH}-${s.yA} · xG ${s.xgH.toFixed(2)}-${s.xgA.toFixed(2)}</div>`;
+      } else if (last) {
+        const r = rec.result;
+        box.innerHTML = `<div class="sw-sum"><b>🏁 Τελικό: ${esc(H)} ${r.hg} – ${r.ag} ${esc(A)}</b> (ημίχρονο ${r.hth}-${r.hta})<br>Τελικές ${r.shH}-${r.shA} (στην εστία ${r.sotH}-${r.sotA}) · κόρνερ ${r.coH}-${r.coA} · κίτρινες ${r.yH}-${r.yA} · κόκκινες ${r.rH}-${r.rA} · πέναλτι ${r.pen} · xG ${r.xgH.toFixed(2)}-${r.xgA.toFixed(2)}</div>`;
+      } else box.innerHTML = '';
+    }
+    function render() { drawHead(); drawFeed(); drawStats(); updateBall(); breakPanel(); }
+    function setPlaying(on) {
+      playing = on; clearInterval(timer);
+      $('#swPlay').textContent = on ? '⏸ Παύση' : '▶ Αναπαραγωγή';
+      if (on) {
+        if (idx >= snaps.length - 1) idx = 0;
+        timer = setInterval(() => {
+          if (idx >= snaps.length - 1) { setPlaying(false); return; }
+          idx++; render();
+          const ht = nar.lines.find((l) => l.type === 'ht');
+          if (autoHT && ht && idx === ht.s) setPlaying(false);
+          if (idx >= snaps.length - 1) setPlaying(false);
+        }, speed);
+      }
+    }
+    function close() { clearInterval(timer); el.remove(); document.body.style.overflow = ''; }
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-sw]'); if (!b) return;
+      const a = b.dataset.sw;
+      if (a === 'close') close();
+      else if (a === 'play') setPlaying(!playing);
+      else if (a === 'spd') { speed = Number(b.dataset.v); el.querySelectorAll('[data-sw=spd]').forEach((x) => x.classList.toggle('on', x === b)); if (playing) setPlaying(true); }
+      else if (a === 'end') { setPlaying(false); idx = snaps.length - 1; render(); }
+    });
+    el.querySelector('#swScrub').addEventListener('input', (e) => { setPlaying(false); idx = Number(e.target.value); render(); });
+    el.querySelector('#swMinor').addEventListener('change', (e) => { showMinor = e.target.checked; drawFeed(); });
+    el.querySelector('#swAuto').addEventListener('change', (e) => { autoHT = e.target.checked; });
+    render();
+    setTimeout(() => setPlaying(true), 400);
+    return { close, state: () => ({ idx, playing }), step: (n) => { idx = Math.min(snaps.length - 1, n); render(); }, nar };
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = W; else root.SimWatch = W;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+'use strict';
+/* "Προσομοίωση" tab: daily schedule → pick a match → fresh data pull → Monte-Carlo simulation → betting analysis. */
+(function () {
+  const S = window.Sim, MK = window.SimMarkets, BD = window.SimBuild, D = window.SimData;
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const LS = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch { return d; } };
+  const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+  const pc = (p, d) => (p * 100).toFixed(d == null ? 0 : d) + '%';
+  const od = (x) => (isFinite(x) && x > 0 ? x.toFixed(2) : '—');
+  const BIG = new Set([39, 40, 41, 45, 48, 140, 141, 135, 136, 78, 79, 61, 62, 2, 3, 848, 197, 198, 199, 203, 94, 88, 144, 179, 66, 81, 143, 137, 1, 4, 5, 6, 9, 10, 32, 33, 34, 35, 36, 37, 960, 961, 531, 556, 15, 16, 17, 18, 19, 20, 21, 29, 30, 31, 218, 207, 119, 103, 113, 244, 235, 106, 345, 210, 71, 128, 253, 262]);
+  const WD = ['Κυρ', 'Δευ', 'Τρί', 'Τετ', 'Πέμ', 'Παρ', 'Σάβ'];
+  const athensDay = (d) => (d || new Date()).toLocaleDateString('sv-SE', { timeZone: 'Europe/Athens' });
+  const addDays = (s, n) => { const d = new Date(s + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const hhmm = (ts) => new Date(ts).toLocaleTimeString('el-GR', { timeZone: 'Europe/Athens', hour: '2-digit', minute: '2-digit' });
+  const fmtDT = (ts) => new Date(ts).toLocaleString('el-GR', { timeZone: 'Europe/Athens', weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const ago = (ts) => { const m = Math.round((Date.now() - ts) / 60000); return m < 1 ? 'μόλις τώρα' : m < 60 ? `πριν ${m}'` : `πριν ${Math.round(m / 60)} ώρ.`; };
+
+  const cfg = Object.assign({ depth: 'deep', nSim: 20000, blendW: 30, bankroll: 449, minEdge: 4, filter: 'big' }, LS('lbd_sim', {}));
+  const st = {
+    day: athensDay(), fixtures: null, loadingDay: false, dayErr: null, q: '', fix: null, ctx: null, build: null, R: null, markets: null,
+    tasks: [], busy: false, progress: 0, note: '', err: null, tab: 'tips', onlyOdds: false, runId: 0, mkOpen: {},
+    adj: { disabled: {}, manual: { hAtt: 0, hDef: 0, aAtt: 0, aDef: 0 }, neutral: false, derby: false, playerOverride: {}, start: null },
+    bt: null, seed: 1,
+  };
+  let recompTimer = null;
+
+  // ------------------------------------------------ schedule
+  async function loadDay(force) {
+    st.loadingDay = true; st.dayErr = null; renderSchedule();
+    try { st.fixtures = await D.getDay(st.day, force); } catch (e) { st.dayErr = e.message; st.fixtures = null; }
+    st.loadingDay = false; renderSchedule();
+  }
+  function dayChips() {
+    const today = athensDay();
+    let h = '';
+    for (let i = -1; i <= 6; i++) {
+      const d = addDays(today, i), dt = new Date(d + 'T12:00:00Z');
+      const lab = i === 0 ? 'Σήμερα' : i === 1 ? 'Αύριο' : i === -1 ? 'Χθες' : `${WD[dt.getUTCDay()]} ${dt.getUTCDate()}/${dt.getUTCMonth() + 1}`;
+      h += `<button class="tabbtn${d === st.day ? ' on' : ''}" data-sx="day" data-d="${d}">${lab}</button>`;
+    }
+    return h;
+  }
+  function statusOf(f) {
+    const s = f.status || {};
+    if (['NS', 'TBD'].includes(s.short)) return `<span class="sx-time">${hhmm(f.ts)}</span>`;
+    if (['FT', 'AET', 'PEN'].includes(s.short)) return `<span class="sx-fin">${f.goals.h}-${f.goals.a}</span>`;
+    if (['PST', 'CANC', 'ABD', 'SUSP', 'AWD', 'WO'].includes(s.short)) return `<span class="sx-time">${esc(s.short)}</span>`;
+    return `<span class="sx-live">${s.short === 'HT' ? 'HT' : (s.elapsed || 0) + "'"} ${f.goals.h ?? 0}-${f.goals.a ?? 0}</span>`;
+  }
+  function renderSchedule() {
+    const box = $('#sxSched');
+    if (!box) return;
+    let list = st.fixtures || [];
+    const tracked = new Set(LS('lbd_tracked', []));
+    const q = st.q.trim().toLowerCase();
+    let big = list.filter((f) => BIG.has(f.league.id));
+    if (cfg.filter === 'big') list = big.length ? big : list;
+    else if (cfg.filter === 'star') list = list.filter((f) => tracked.has(f.id));
+    if (q) list = (st.fixtures || []).filter((f) => (f.home.name + ' ' + f.away.name + ' ' + f.league.name + ' ' + f.league.country).toLowerCase().includes(q));
+    const groups = new Map();
+    for (const f of list) { const k = f.league.id; if (!groups.has(k)) groups.set(k, { l: f.league, items: [] }); groups.get(k).items.push(f); }
+    const arr = [...groups.values()].sort((a, b) => (BIG.has(b.l.id) ? 1 : 0) - (BIG.has(a.l.id) ? 1 : 0) || a.l.country.localeCompare(b.l.country) || a.l.name.localeCompare(b.l.name));
+    let h = `<div class="seg" id="sxDays">${dayChips()}</div>
+      <div class="sx-row2"><input type="date" id="sxDate" value="${st.day}"><input type="search" id="sxQ" placeholder="Αναζήτηση ομάδας / λίγκας" value="${esc(st.q)}"><button data-sx="reload" title="Ανανέωση προγράμματος">⟳</button></div>
+      <div class="seg"><button class="tabbtn${cfg.filter === 'big' ? ' on' : ''}" data-sx="filter" data-f="big">Μεγάλες λίγκες</button><button class="tabbtn${cfg.filter === 'all' ? ' on' : ''}" data-sx="filter" data-f="all">Όλες</button><button class="tabbtn${cfg.filter === 'star' ? ' on' : ''}" data-sx="filter" data-f="star">★ Αγαπημένα</button></div>`;
+    if (st.loadingDay) h += '<p class="muted">Φόρτωση προγράμματος…</p>';
+    else if (st.dayErr) h += `<p class="neg">${esc(st.dayErr)}</p>`;
+    else if (!arr.length) h += `<p class="muted">Δεν βρέθηκαν αγώνες ${st.fixtures && st.fixtures.length ? 'με αυτό το φίλτρο — δοκίμασε «Όλες»' : 'για αυτή την ημέρα'}.</p>`;
+    for (const g of arr) {
+      h += `<div class="sx-lg">${esc(g.l.country)} · ${esc(g.l.name)}</div>`;
+      g.items.sort((a, b) => a.ts - b.ts);
+      for (const f of g.items) h += `<div class="sx-row${st.fix && st.fix.id === f.id ? ' sel' : ''}" data-sx="pick" data-id="${f.id}">${statusOf(f)}<span class="sx-t">${esc(f.home.name)} – ${esc(f.away.name)}</span><span class="sx-go">Προσομοίωση ▶</span></div>`;
+    }
+    box.innerHTML = h;
+  }
+
+  // ------------------------------------------------ controls card
+  function renderControls() {
+    const box = $('#sxCtl');
+    if (!box) return;
+    box.innerHTML = `<h2>Ρυθμίσεις προσομοίωσης</h2>
+      <div class="sx-grid">
+        <label>Βάθος δεδομένων<select id="cfgDepth"><option value="light"${cfg.depth === 'light' ? ' selected' : ''}>Ελαφρύ (~8 κλήσεις)</option><option value="normal"${cfg.depth === 'normal' ? ' selected' : ''}>Κανονικό (~18)</option><option value="deep"${cfg.depth === 'deep' ? ' selected' : ''}>Βαθύ (~45)</option></select></label>
+        <label>Προσομοιώσεις<select id="cfgN"><option value="8000"${cfg.nSim === 8000 ? ' selected' : ''}>8.000 (γρήγορο)</option><option value="20000"${cfg.nSim === 20000 ? ' selected' : ''}>20.000</option><option value="50000"${cfg.nSim === 50000 ? ' selected' : ''}>50.000 (πιο σταθερό)</option></select></label>
+        <label>Βάρος αγοράς: <b id="cfgBlendV">${cfg.blendW}%</b><input type="range" id="cfgBlend" min="0" max="100" step="5" value="${cfg.blendW}"></label>
+        <label>Bankroll (€)<input type="number" id="cfgBank" min="0" step="10" value="${cfg.bankroll}"></label>
+        <label>Ελάχιστο edge για value (%)<input type="number" id="cfgEdge" min="0" max="30" step="0.5" value="${cfg.minEdge}"></label>
+      </div>
+      <p class="note">Το «βάρος αγοράς» ανακατεύει το μοντέλο με τις αποδόσεις των bookmakers (χωρίς το περιθώριό τους): 0% = καθαρό μοντέλο, 100% = μόνο αγορά. Οι αγορές είναι συνήθως πολύ ακριβείς, γι' αυτό το 30% μειώνει τα ψεύτικα value. Πριν από κάθε προσομοίωση ανανεώνονται ενδεκάδες, τραυματισμοί, αποδόσεις, διαιτητής, καιρός και νέα.</p>`;
+  }
+
+  // ------------------------------------------------ run
+  async function pick(id) {
+    const f = (st.fixtures || []).find((x) => x.id === id);
+    if (!f) return;
+    st.fix = f; renderSchedule();
+    st.adj = { disabled: {}, manual: { hAtt: 0, hDef: 0, aAtt: 0, aDef: 0 }, neutral: false, derby: false, playerOverride: {}, start: null };
+    await runMatch(false);
+    const m = $('#sxMatch'); if (m) m.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  async function runMatch(force) {
+    const my = ++st.runId;
+    const fix = st.fix;
+    st.ctx = null; st.build = null; st.R = null; st.markets = null; st.err = null; st.tasks = []; st.busy = true; st.progress = 0; st.note = ''; st.bt = null;
+    renderMatch();
+    try {
+      if (!D.hasKey()) throw new Error('Βάλε πρώτα το κλειδί API-Football στις Ρυθμίσεις.');
+      await D.quota();
+      let depth = cfg.depth;
+      const rem = D.state.remaining;
+      if (rem != null) {
+        if (rem < D.estimate('light') + 5) throw new Error(`Έμειναν μόνο ${rem} κλήσεις API σήμερα — δεν αρκούν.`);
+        if (rem < D.estimate(depth) + 25) {
+          const down = rem >= D.estimate('normal') + 25 ? 'normal' : 'light';
+          if (down !== depth) { st.note = `Έμειναν ${rem} κλήσεις API σήμερα, οπότε χρησιμοποιώ ${down === 'normal' ? 'κανονικό' : 'ελαφρύ'} βάθος.`; depth = down; }
+        }
+      }
+      const ctx = await D.loadMatch(fix, { depth, force, onTask: (t) => { if (my !== st.runId) return; const i = st.tasks.findIndex((x) => x.id === t.id); if (i >= 0) st.tasks[i] = Object.assign({}, t); else st.tasks.push(Object.assign({}, t)); renderProgress(); } });
+      if (my !== st.runId) return;
+      st.ctx = ctx; st.depthUsed = depth;
+      await recompute(my);
+    } catch (e) { st.err = e.message || String(e); st.busy = false; renderMatch(); }
+  }
+  function buildOpts() {
+    return { halfLife: 100, neutral: st.adj.neutral, derby: st.adj.derby, disabled: st.adj.disabled, manual: st.adj.manual, playerOverride: st.adj.playerOverride, blendW: cfg.blendW / 100, start: st.adj.start };
+  }
+  async function recompute(my) {
+    my = my || st.runId;
+    st.busy = true; st.progress = 0; renderMatch();
+    const b = BD.run(st.ctx, buildOpts());
+    if (b.error) { st.err = b.error; st.busy = false; renderMatch(); return; }
+    st.build = b;
+    const R = await S.simulate(b.params, { n: cfg.nSim, seed: 20261102 + st.seed, onProgress: (p) => { if (my === st.runId) { st.progress = p; const bar = $('#sxProg'); if (bar) bar.style.width = (p * 100).toFixed(0) + '%'; } } });
+    if (my !== st.runId) return;
+    st.R = R; st.markets = MK.markets(R, { h: st.ctx.fixture.home.name, a: st.ctx.fixture.away.name });
+    st.busy = false; st.err = null;
+    renderMatch();
+  }
+  function scheduleRecompute() { clearTimeout(recompTimer); recompTimer = setTimeout(() => recompute(), 350); }
+
+  // ------------------------------------------------ rendering of the match panel
+  function renderProgress() {
+    const box = $('#sxTasks');
+    if (!box) { renderMatch(); return; }
+    box.innerHTML = tasksHtml();
+  }
+  function tasksHtml() {
+    const ic = { run: '⏳', ok: '✅', skip: '➖', fail: '⚠️' };
+    return st.tasks.map((t) => `<div class="sx-task ${t.status}"><span>${ic[t.status] || ''}</span><span>${esc(t.label)}</span><span class="muted">${esc(t.note || '')}</span></div>`).join('');
+  }
+  function bar3(h, d, a, names) {
+    return `<div class="sx-1x2"><i class="h" style="width:${h * 100}%">${pc(h)}</i><i class="d" style="width:${d * 100}%">${pc(d)}</i><i class="a" style="width:${a * 100}%">${pc(a)}</i></div>
+      <div class="sx-1x2l"><span>1 · ${esc(names[0])} <b>${od(1 / h)}</b></span><span>Χ <b>${od(1 / d)}</b></span><span>2 · ${esc(names[1])} <b>${od(1 / a)}</b></span></div>`;
+  }
+  function renderMatch() {
+    const box = $('#sxMatch');
+    if (!box) return;
+    if (!st.fix) { box.innerHTML = ''; return; }
+    const f = st.ctx ? st.ctx.fixture : st.fix;
+    const names = [f.home.name, f.away.name];
+    let h = `<section class="card sx-head"><h2>${esc(f.league.country)} · ${esc(f.league.name)}${f.league.round ? ' · ' + esc(f.league.round) : ''}</h2>
+      <div class="sx-title">${esc(names[0])} <span class="muted">–</span> ${esc(names[1])}</div>
+      <div class="muted">${fmtDT(f.ts)}${f.venue && f.venue.name ? ' · ' + esc(f.venue.name) + (f.venue.city ? ', ' + esc(f.venue.city) : '') : ''}${f.referee ? ' · διαιτητής ' + esc(f.referee) : ' · διαιτητής: δεν έχει ανακοινωθεί'}</div>
+      ${st.note ? `<p class="note neg">${esc(st.note)}</p>` : ''}</section>`;
+    if (st.err) h += `<section class="card"><p class="neg">${esc(st.err)}</p><button data-sx="rerun">Δοκίμασε ξανά</button></section>`;
+    if (st.busy && !st.ctx) h += `<section class="card"><h2>Ανανέωση δεδομένων…</h2><div id="sxTasks">${tasksHtml()}</div><p class="note">Φέρνω τα πιο πρόσφατα στοιχεία (ενδεκάδες, τραυματισμούς, αποδόσεις, καιρό, νέα) πριν τρέξει η προσομοίωση.</p></section>`;
+    if (st.ctx && st.busy && !st.R) h += `<section class="card"><h2>Προσομοίωση ${cfg.nSim.toLocaleString('el-GR')} αγώνων…</h2><div class="sx-pbar"><i id="sxProg" style="width:${(st.progress * 100).toFixed(0)}%"></i></div></section>`;
+    if (st.R && st.build) h += `<div class="${st.busy ? 'sx-stale' : ''}">${st.busy ? `<div class="sx-pbar sx-pbar-top"><i id="sxProg" style="width:${(st.progress * 100).toFixed(0)}%"></i></div><p class="note">Επανυπολογισμός με τις νέες ρυθμίσεις…</p>` : ''}${resultsHtml(names)}</div>`;
+    box.innerHTML = h;
+  }
+
+  function resultsHtml(names) {
+    const R = st.R, b = st.build, ctx = st.ctx, mk = st.markets;
+    const by = Object.fromEntries(mk.map((m) => [m.key, m]));
+    const [cl, cc] = BD.completenessLabel(b.completeness);
+    const top = MK.topScores(R, 5);
+    const l = b.lambdas;
+    let h = `<section class="card sx-sum"><h2>Αποτέλεσμα προσομοίωσης · ${R.n.toLocaleString('el-GR')} αγώνες</h2>
+      ${bar3(by['ft:1'].p, by['ft:X'].p, by['ft:2'].p, names)}
+      <div class="sx-kv">
+        <div><span>Αναμενόμενα γκολ</span><b>${R.mean.hg.toFixed(2)} – ${R.mean.ag.toFixed(2)}</b></div>
+        <div><span>Πιθανότερο σκορ</span><b>${top[0].h}-${top[0].a} (${pc(top[0].p, 1)})</b></div>
+        <div><span>Over 2.5</span><b>${pc(by['ou:2.5:over'].p)}</b></div>
+        <div><span>GG (BTTS)</span><b>${pc(by['btts:yes'].p)}</b></div>
+        <div><span>Ημίχρονο 1/Χ/2</span><b>${pc(by['ht:1'].p)}/${pc(by['ht:X'].p)}/${pc(by['ht:2'].p)}</b></div>
+        <div><span>Κόρνερ (μέσος όρος)</span><b>${(R.mean.coH + R.mean.coA).toFixed(1)}</b></div>
+        <div><span>Κάρτες (μέσος όρος)</span><b>${(R.mean.yH + R.mean.yA + R.mean.rH + R.mean.rA).toFixed(1)}</b></div>
+        <div><span>Πέναλτι / κόκκινη</span><b>${pc(by['pen:yes'].p)} / ${pc(by['red:yes'].p)}</b></div>
+      </div>
+      <div class="muted sx-small">Εκτίμηση γκολ (λ): βάση ${l.base.lh.toFixed(2)}–${l.base.la.toFixed(2)} → μετά από παράγοντες ${l.afterFactors.lh.toFixed(2)}–${l.afterFactors.la.toFixed(2)}${Math.abs(l.final.lh - l.afterFactors.lh) > 0.005 ? ` → μετά την αγορά ${l.final.lh.toFixed(2)}–${l.final.la.toFixed(2)}` : ''}.
+        Αξιοπιστία δεδομένων: <span class="tag ${cc}">${cl} (${Math.round(b.completeness * 100)}%)</span>${b.crossLeague ? ' <span class="tag mid">σύγκριση διαφορετικών λιγκών/κύπελλο</span>' : ''}</div>
+      ${ctx.apiPred ? `<div class="muted sx-small">Δεύτερη γνώμη API-Football: ${pc(ctx.apiPred.home)}/${pc(ctx.apiPred.draw)}/${pc(ctx.apiPred.away)}${ctx.apiPred.advice ? ' · ' + esc(ctx.apiPred.advice) : ''}</div>` : ''}
+      ${b.blend && b.blend.market ? `<div class="muted sx-small">Αγορά (χωρίς περιθώριο): ${pc(b.blend.market.h)}/${pc(b.blend.market.d)}/${pc(b.blend.market.a)} · καθαρό μοντέλο: ${pc(b.blend.pure.h)}/${pc(b.blend.pure.d)}/${pc(b.blend.pure.a)}</div>` : '<div class="muted sx-small">Δεν υπάρχουν ακόμα αποδόσεις: το αποτέλεσμα βασίζεται μόνο στο μοντέλο.</div>'}
+      <div class="sx-btns"><button class="primary" data-sx="watch">🎮 Δες τον αγώνα</button><button data-sx="likely">🎯 Πιθανότερο σενάριο (${top[0].h}-${top[0].a})</button><button data-sx="reseed">🎲 Νέα προσομοίωση</button><button data-sx="rerun">↻ Ανανέωση δεδομένων &amp; επανάληψη</button></div>
+      <p class="note">Στατιστική εκτίμηση, όχι εγγύηση κέρδους και όχι χρηματοοικονομική συμβουλή. Έλεγξε την πραγματική απόδοση πριν στοιχηματίσεις και παίξε μόνο ό,τι αντέχεις να χάσεις.</p></section>`;
+    h += `<div class="seg sx-tabs">${[['tips', '💡 Προτάσεις'], ['mk', '📊 Αγορές'], ['fac', '⚙ Παράγοντες'], ['charts', '📈 Γραφήματα'], ['news', '📰 Νέα'], ['data', '🔎 Δεδομένα']].map(([k, t]) => `<button class="tabbtn${st.tab === k ? ' on' : ''}" data-sx="tab" data-t="${k}">${t}</button>`).join('')}</div>`;
+    h += `<section class="card" id="sxTabBody">${tabBody()}</section>`;
+    return h;
+  }
+
+  // ------------------------------------------------ tab: tips (value / probable)
+  const FAM = (k) => k.split(':').slice(0, k.startsWith('ou') || k.startsWith('co') || k.startsWith('cd') || k.startsWith('tt') || k.startsWith('ht_ou') ? 2 : 1).join(':');
+  function tipsHtml() {
+    const ctx = st.ctx, b = st.build, mk = st.markets;
+    const best = (ctx.odds && ctx.odds.best) || {};
+    const have = Object.keys(best).length > 0;
+    const rows = MK.evaluate(mk, best, { minEdge: cfg.minEdge / 100, bankroll: cfg.bankroll, unc: b.unc });
+    const value = rows.filter((r) => r.value).slice(0, 8);
+    let h = '<h2>Value σε σχέση με τις αποδόσεις</h2>';
+    if (!have) h += '<p class="muted">Οι αποδόσεις δεν έχουν ανοίξει ακόμα για αυτόν τον αγώνα. Δες παρακάτω τις πιθανότερες αγορές με την ελάχιστη απόδοση που αξίζει.</p>';
+    else if (!value.length) h += `<p class="muted">Δεν βρέθηκε αγορά με απόδοση ≥ 1.30 και edge ≥ ${cfg.minEdge}% μετά από το περιθώριο ασφαλείας (${pc(b.unc, 1)} στην πιθανότητα). Και αυτή είναι απάντηση: δεν έχει κάθε αγώνας value.</p>`;
+    for (const r of value) {
+      h += `<div class="pick value"><div class="big">${esc(r.label)} @ ${od(r.odds)} <span class="muted">(${esc(r.book)})</span></div>
+        <div class="m">Μοντέλο <b>${pc(r.p, 1)}</b> · δίκαιη απόδοση ${od(r.fair)} · edge <b class="pos">+${(r.ev * 100).toFixed(1)}%</b> · ελάχιστη απόδοση που αξίζει ${od(r.minOdds)} · μέση αγορά ${od(r.med)} (${r.nBooks} bookmakers)</div>
+        <div class="m">Προτεινόμενο μέγεθος (¼ Kelly, όριο 3%): <b>${(r.kellyPct * 100).toFixed(1)}%</b> του bankroll${cfg.bankroll ? ' ≈ <b>€' + (r.kellyPct * cfg.bankroll).toFixed(2) + '</b>' : ''} — μαθηματικός υπολογισμός, την απόφαση την παίρνεις εσύ.</div>
+        ${r.ev > 0.25 ? '<div class="m neg">⚠ Πολύ μεγάλο edge (&gt;25%). Συνήθως σημαίνει ότι το μοντέλο δεν ξέρει κάτι (τραυματίας, αλλαγή ενδεκάδας, παλιά απόδοση) και όχι ότι η αγορά έκανε λάθος. Έλεγξε τα νέα και την ενδεκάδα πριν το εμπιστευτείς.</div>' : ''}</div>`;
+    }
+    // probable markets with the minimum playable odds
+    const cand = mk.filter((m) => m.p >= 0.55 && m.p <= 0.93 && !/^(tg|oe|fg:none|late|g30|co:1x2|dnb)/.test(m.key) && !/^htft/.test(m.key)).sort((x, y) => y.p - x.p);
+    const seen = new Set(), pick = [];
+    for (const m of cand) { const fam = FAM(m.key); if (seen.has(fam)) continue; seen.add(fam); pick.push(m); if (pick.length >= 8) break; }
+    h += '<h2 style="margin-top:14px">Πιθανότερες αγορές &amp; ελάχιστη απόδοση</h2>';
+    h += pick.map((m) => {
+      const fair = m.type === 'push' ? (1 - (m.pp || 0)) / m.p : 1 / m.p, minO = fair * 1.06, bo = best[m.key];
+      let verdict = '';
+      if (bo) verdict = bo.o >= Math.max(minO, 1.3) ? `<span class="pos">αγορά ${od(bo.o)} ✓ αρκεί</span>` : `<span class="neg">αγορά ${od(bo.o)} — χαμηλότερη από την ελάχιστη</span>`;
+      return `<div class="pick"><div class="big">${esc(m.label)} — ${pc(m.p)}</div><div class="m">Δίκαιη ${od(fair)} · αξίζει μόνο από <b>${od(minO)}</b>${minO < 1.3 ? ' (κάτω από 1.30)' : ''} ${verdict}</div></div>`;
+    }).join('') || '<p class="muted">Καμία αγορά δεν ξεχωρίζει καθαρά.</p>';
+    // same-match combos with odds
+    const cmb = rows.filter((r) => r.key.startsWith('cmb:') && r.eligible).sort((x, y) => y.ev - x.ev).slice(0, 4);
+    if (cmb.length) {
+      h += '<h2 style="margin-top:14px">Συνδυαστικά ίδιου αγώνα (με τη συσχέτιση του μοντέλου)</h2>' + cmb.map((r) => `<div class="pick"><div class="big">${esc(r.label)} @ ${od(r.odds)}</div><div class="m">Μοντέλο ${pc(r.p, 1)} · δίκαιη ${od(r.fair)} · ${r.ev >= 0 ? '<span class="pos">+' : '<span class="neg">'}${(r.ev * 100).toFixed(1)}%</span></div></div>`).join('');
+    }
+    return h;
+  }
+
+  // ------------------------------------------------ tab: all markets
+  function marketsHtml() {
+    const best = (st.ctx.odds && st.ctx.odds.best) || {};
+    const rows = MK.evaluate(st.markets, best, { minEdge: cfg.minEdge / 100, bankroll: cfg.bankroll, unc: st.build.unc });
+    const rb = Object.fromEntries(rows.map((r) => [r.key, r]));
+    let h = `<label class="sx-chk"><input type="checkbox" id="sxOnlyOdds"${st.onlyOdds ? ' checked' : ''}> Μόνο αγορές με απόδοση</label>`;
+    for (const [g, name] of Object.entries(MK.GROUPS)) {
+      const list = st.markets.filter((m) => m.group === g && (!st.onlyOdds || rb[m.key]));
+      if (!list.length) continue;
+      h += `<details class="sx-det" data-g="${g}"${st.mkOpen[g] || g === 'ft' ? ' open' : ''}><summary><b>${name}</b> <span class="muted">(${list.length})</span></summary><table class="sx-tbl"><thead><tr><th>Αγορά</th><th>Π%</th><th>Δίκαιη</th><th>Απόδοση</th><th>Edge</th></tr></thead><tbody>`;
+      for (const m of list) {
+        const r = rb[m.key], fair = m.type === 'push' ? (1 - (m.pp || 0)) / m.p : 1 / m.p;
+        h += `<tr class="${r && r.value ? 'val' : ''}"><td>${esc(m.label)}</td><td>${pc(m.p, m.p < 0.1 ? 1 : 0)}</td><td>${od(fair)}</td><td>${r ? od(r.odds) : '—'}</td><td>${r ? `<span class="${r.ev >= 0 ? 'pos' : 'neg'}">${r.ev >= 0 ? '+' : ''}${(r.ev * 100).toFixed(1)}%</span>` : ''}</td></tr>`;
+      }
+      h += '</tbody></table></details>';
+    }
+    const sc = MK.topScores(st.R, 8);
+    h += `<details class="sx-det"><summary><b>Ακριβές σκορ</b></summary><table class="sx-tbl"><tbody>${sc.map((x) => `<tr><td>${x.h}-${x.a}</td><td>${pc(x.p, 1)}</td><td>${od(1 / x.p)}</td></tr>`).join('')}</tbody></table></details>`;
+    h += '<p class="note">Στις αγορές με επιστροφή (DNB, χάντικαπ με ακέραιο) η δίκαιη απόδοση υπολογίζεται χωρίς τις περιπτώσεις επιστροφής. Οι κάρτες μετράνε κίτρινες + κόκκινες.</p>';
+    return h;
+  }
+
+  // ------------------------------------------------ tab: factors
+  function factorsHtml() {
+    const b = st.build, f = st.ctx.fixture, m = st.adj.manual;
+    const eff = (x) => (Math.abs(x - 1) < 0.0005 ? '<span class="muted">0%</span>' : `<span class="${x > 1 ? 'pos' : 'neg'}">${x > 1 ? '+' : '−'}${Math.abs((x - 1) * 100).toFixed(1)}%</span>`);
+    const dots = (c) => '●'.repeat(Math.max(1, Math.round(c * 4))) + '○'.repeat(4 - Math.max(1, Math.round(c * 4)));
+    let h = '<p class="note" style="margin-top:0">Κάθε παράγοντας αλλάζει τα αναμενόμενα γκολ (λ). Απενεργοποίησε όποιον δεν εμπιστεύεσαι και η προσομοίωση ξανατρέχει αμέσως.</p>';
+    for (const x of b.factors) {
+      h += `<div class="sx-fac${x.on ? '' : ' off'}"><div class="sx-fh">${x.locked ? '<span class="sx-lock">🔒</span>' : `<input type="checkbox" data-sx="fac" data-id="${x.id}"${x.on ? ' checked' : ''}>`}<b>${esc(x.label)}</b><span class="sx-eff">${esc(f.home.name.split(' ')[0])} ${eff(x.effH)} · ${esc(f.away.name.split(' ')[0])} ${eff(x.effA)}</span><span class="sx-conf" title="Βεβαιότητα">${dots(x.conf)}</span></div><div class="muted sx-small">${esc(x.detail)}</div>`;
+      if (x.players) {
+        for (const side of ['home', 'away']) {
+          for (const p of x.players[side]) {
+            const ov = p.override;
+            h += `<div class="sx-pl"><span>${esc(p.name)} <span class="muted">(${esc(f[side].name)} · ${p.pos}${p.w < 1 ? ' · αμφίβολος' : ''}${p.goals ? ' · ' + p.goals + ' γκολ' : ''})</span></span><span><button class="mini${p.w >= 1 ? ' on' : ''}" data-sx="pl" data-id="${p.id}" data-v="out">Εκτός</button><button class="mini${p.w === 0 ? ' on' : ''}" data-sx="pl" data-id="${p.id}" data-v="in">Παίζει</button></span></div>`;
+          }
+        }
+      }
+      h += '</div>';
+    }
+    h += `<div class="sx-fac"><div class="sx-fh"><b>Δικές σου διορθώσεις (what-if)</b></div>
+      ${[['hAtt', 'Επίθεση ' + f.home.name], ['hDef', 'Άμυνα ' + f.home.name], ['aAtt', 'Επίθεση ' + f.away.name], ['aDef', 'Άμυνα ' + f.away.name]].map(([k, lab]) => `<label class="sx-rng">${esc(lab)}: <b id="m_${k}">${m[k] > 0 ? '+' : ''}${m[k]}%</b><input type="range" min="-25" max="25" step="1" value="${m[k]}" data-sx="man" data-k="${k}"></label>`).join('')}
+      <label class="sx-chk"><input type="checkbox" data-sx="neutral"${st.adj.neutral ? ' checked' : ''}> Ουδέτερο γήπεδο</label>
+      <label class="sx-chk"><input type="checkbox" data-sx="derby"${st.adj.derby ? ' checked' : ''}> Ντέρμπι / υψηλή ένταση (περισσότερες κάρτες)</label>
+      <div class="sx-row2"><label>Ξεκίνα από λεπτό <input type="number" id="stMin" min="0" max="89" value="${st.adj.start ? st.adj.start.minute : 0}" style="width:64px"></label><label>σκορ <input type="number" id="stH" min="0" max="9" value="${st.adj.start ? st.adj.start.hg : 0}" style="width:54px"> – <input type="number" id="stA" min="0" max="9" value="${st.adj.start ? st.adj.start.ag : 0}" style="width:54px"></label><button data-sx="start">Εφαρμογή</button></div>
+      <p class="note">Η επιλογή «Ξεκίνα από λεπτό» υπολογίζει το υπόλοιπο ενός αγώνα που ήδη εξελίσσεται (0 = πριν τον αγώνα). <button class="mini" data-sx="resetadj">Μηδενισμός διορθώσεων</button></p></div>`;
+    return h;
+  }
+
+  // ------------------------------------------------ tab: charts
+  function chartsHtml() {
+    const R = st.R, f = st.ctx.fixture;
+    let h = '<h2>Κατανομή σκορ (γηπεδούχος κάθετα · φιλοξενούμενος οριζόντια)</h2><div class="sx-scroll"><table class="sx-heat"><thead><tr><th></th>' + [0, 1, 2, 3, 4, 5].map((j) => `<th>${j}</th>`).join('') + '</tr></thead><tbody>';
+    const W = R.GM + 1;
+    let mx = 0; for (let i = 0; i <= 5; i++) for (let j = 0; j <= 5; j++) mx = Math.max(mx, R.mat[i * W + j]);
+    for (let i = 0; i <= 5; i++) {
+      h += `<tr><th>${i}</th>`;
+      for (let j = 0; j <= 5; j++) { const p = R.mat[i * W + j]; h += `<td style="background:rgba(79,140,255,${(p / mx * 0.85).toFixed(2)})">${(p * 100).toFixed(1)}</td>`; }
+      h += '</tr>';
+    }
+    h += '</tbody></table></div>';
+    const labels = ["1-15'", "16-30'", "31-45'+", "46-60'", "61-75'", "76-90'+"];
+    const mxb = Math.max(...R.gBinsH, ...R.gBinsA, 0.01);
+    h += '<h2 style="margin-top:14px">Πότε πέφτουν τα γκολ (αναμενόμενα γκολ ανά 15λεπτο)</h2>' + labels.map((lb, i) => `<div class="sx-bar"><span>${lb}</span><div><i class="h" style="width:${(R.gBinsH[i] / mxb) * 48}%"></i><i class="a" style="width:${(R.gBinsA[i] / mxb) * 48}%"></i></div><span>${R.gBinsH[i].toFixed(2)} / ${R.gBinsA[i].toFixed(2)}</span></div>`).join('') + `<p class="note">Μπλε = ${esc(f.home.name)}, πορτοκαλί = ${esc(f.away.name)}. Πρώτο γκολ: ${esc(f.home.name)} ${pc(R.first[1])}, ${esc(f.away.name)} ${pc(R.first[2])}, κανένα ${pc(R.first[0])}. Γκολ μετά το 75': ${pc(R.lateGoal)}.</p>`;
+    const hist = (arr, from, to, line) => { const m = Math.max(...arr.slice(from, to + 1)); return arr.slice(from, to + 1).map((p, i) => `<div class="sx-bar"><span>${from + i}</span><div><i class="${from + i > line ? 'h' : 'a'}" style="width:${(p / m) * 90}%"></i></div><span>${pc(p, 1)}</span></div>`).join(''); };
+    h += `<h2 style="margin-top:14px">Κόρνερ συνολικά (μέσος όρος ${(R.mean.coH + R.mean.coA).toFixed(1)})</h2>${hist(R.coT, 4, 17, 9.5)}<p class="note">Μπλε = πάνω από 9.5.</p>`;
+    h += `<h2 style="margin-top:14px">Κάρτες συνολικά (κίτρινες+κόκκινες)</h2>${hist(R.cdT, 0, 9, 3.5)}<p class="note">Μπλε = πάνω από 3.5 κάρτες.</p>`;
+    return h;
+  }
+
+  // ------------------------------------------------ tab: news
+  const HOT = /(τραυματ|απουσ|ενδεκάδ|τιμωρ|αμφίβολ|injur|lineup|line-up|suspen|doubt|ruled out|miss|out for)/i;
+  function newsHtml() {
+    const ctx = st.ctx, f = ctx.fixture;
+    let h = '';
+    if (!ctx.news) h += '<p class="muted">Δεν φορτώθηκαν νέα αυτόματα (ο browser ή η πηγή μπλόκαρε το αίτημα, ή το βάθος δεδομένων δεν είναι «Βαθύ»). Δες τα εδώ και ό,τι βρεις πρόσθεσέ το ως διόρθωση στην καρτέλα «Παράγοντες».</p>';
+    for (const [side, team] of [['home', f.home.name], ['away', f.away.name]]) {
+      const items = ctx.news && ctx.news[side];
+      h += `<h2 style="margin-top:10px">${esc(team)}</h2>`;
+      if (items && items.length) h += items.map((n) => `<div class="sx-news${HOT.test(n.title) ? ' hot' : ''}"><a href="${esc(n.link)}" target="_blank" rel="noopener">${HOT.test(n.title) ? '⚠ ' : ''}${esc(n.title)}</a><div class="muted sx-small">${esc(n.source || '')}${n.ts ? ' · ' + ago(n.ts) : ''}</div></div>`).join('');
+      else h += '<p class="muted sx-small">Κανένας τίτλος.</p>';
+      h += `<a class="sx-link" href="${D.newsLink(team)}" target="_blank" rel="noopener">Άνοιγμα ειδήσεων για ${esc(team)} ↗</a>`;
+    }
+    h += '<p class="note">Οι τίτλοι δεν επηρεάζουν αυτόματα το μοντέλο. Όταν δεις κάτι ουσιαστικό (π.χ. αποβολή βασικού, αλλαγή προπονητή), χρησιμοποίησε τα κουμπιά «Εκτός/Παίζει» ή τις δικές σου διορθώσεις.</p>';
+    return h;
+  }
+
+  // ------------------------------------------------ tab: data & quality
+  function dataHtml() {
+    const ctx = st.ctx, b = st.build;
+    const [cl] = BD.completenessLabel(b.completeness);
+    let h = `<p>Αξιοπιστία δεδομένων: <b>${cl} (${Math.round(b.completeness * 100)}%)</b> · κλήσεις API σε αυτή την ανανέωση: <b>${ctx.calls}</b>${D.state.remaining != null ? ' · υπόλοιπο σήμερα: <b>' + D.state.remaining + '</b>' : ''} · ανανεώθηκε ${ago(ctx.loadedAt)} (${hhmm(ctx.loadedAt)})</p>`;
+    h += st.tasks.map((t) => `<div class="sx-task ${t.status}"><span>${{ run: '⏳', ok: '✅', skip: '➖', fail: '⚠️' }[t.status]}</span><span>${esc(t.label)}</span><span class="muted">${esc(t.note || '')}${ctx.freshness[t.id] ? ' · ' + ago(ctx.freshness[t.id]) : ''}</span></div>`).join('');
+    h += `<h2 style="margin-top:14px">Έλεγχος ποιότητας μοντέλου στη λίγκα</h2>`;
+    if (!st.bt) h += '<p class="note">Ξαναπαίζει τους τελευταίους ~60 αγώνες της λίγκας χρησιμοποιώντας μόνο όσα ήταν γνωστά πριν από κάθε αγώνα, και συγκρίνει το μοντέλο με την απλή «μέση λίγκα». Δεν χρειάζεται επιπλέον κλήσεις API.</p><button data-sx="bt">Τρέξε έλεγχο</button>';
+    else if (st.bt.none) h += '<p class="muted">Δεν υπάρχουν αρκετοί αγώνες στη λίγκα για έλεγχο.</p>';
+    else {
+      const x = st.bt;
+      h += `<div class="sx-kv"><div><span>Αγώνες ελέγχου</span><b>${x.n}</b></div><div><span>Brier μοντέλου / μέσης λίγκας</span><b>${x.brier.toFixed(3)} / ${x.brierBase.toFixed(3)}</b></div><div><span>Βελτίωση</span><b class="${x.skill > 0 ? 'pos' : 'neg'}">${(x.skill * 100).toFixed(1)}%</b></div><div><span>Log-loss</span><b>${x.logloss.toFixed(3)} / ${x.loglossBase.toFixed(3)}</b></div><div><span>Σωστός τύπος αποτελέσματος</span><b>${pc(x.hitRate)}</b></div><div><span>Over 2.5 Brier</span><b>${x.brierOver.toFixed(3)} / ${x.brierOverBase.toFixed(3)}</b></div></div>
+        <p class="note">Brier: μικρότερο = καλύτερο. Θετική «βελτίωση» σημαίνει ότι το μοντέλο ξεπερνά τη μέση λίγκα. Αυτό ελέγχει μόνο το κομμάτι της δύναμης ομάδων· οι αγορές με αποδόσεις παραμένουν πιο ακριβείς.</p>`;
+    }
+    return h;
+  }
+
+  function tabBody() {
+    try {
+      switch (st.tab) {
+        case 'mk': return marketsHtml();
+        case 'fac': return factorsHtml();
+        case 'charts': return chartsHtml();
+        case 'news': return newsHtml();
+        case 'data': return dataHtml();
+        default: return tipsHtml();
+      }
+    } catch (e) { return `<p class="neg">Σφάλμα εμφάνισης: ${esc(e.message)}</p>`; }
+  }
+  function refreshTab() { const b = $('#sxTabBody'); if (b) b.innerHTML = tabBody(); document.querySelectorAll('[data-sx=tab]').forEach((x) => x.classList.toggle('on', x.dataset.t === st.tab)); }
+
+  // ------------------------------------------------ watch
+  function openWatch(seed) {
+    if (!st.R || !st.build) return;
+    const rec = S.record(st.R.params, seed);
+    window.SimWatch.open({ ctx: st.ctx, build: st.build, R: st.R, rec });
+  }
+
+  // ------------------------------------------------ API key (stored only in this browser, shared with the dashboard on the same site)
+  function renderIntro() {
+    const box = $('#sxIntro');
+    if (!box) return;
+    const has = D.hasKey();
+    const key = LS('lbd_key', '');
+    const keyForm = `<div class="sx-row2" style="margin-top:8px"><input type="password" id="sxKey" placeholder="Κλειδί API-Football" autocomplete="off" spellcheck="false"><button class="primary" data-sx="savekey">Αποθήκευση</button></div><p class="note" id="sxKeyMsg">Το κλειδί μένει μόνο σε αυτό το κινητό/πρόγραμμα περιήγησης και στέλνεται μόνο στο API-Football. Το βρίσκεις στο dashboard.api-football.com.</p>`;
+    box.innerHTML = has
+      ? `<h2>Προσομοίωση αγώνα</h2><p class="note" style="margin:0">Διάλεξε αγώνα από το πρόγραμμα. Πριν από κάθε προσομοίωση φέρνω τα τελευταία δεδομένα και νέα, και μετά τρέχω χιλιάδες εικονικούς αγώνες. Δες value ως προς τις αποδόσεις, κόρνερ, κάρτες, ημίχρονο και ολόκληρο τον αγώνα λεπτό-λεπτό.</p>
+         <p class="note" style="margin:8px 0 0">🔑 Κλειδί API: …${esc(String(key).slice(-4))} <button class="mini" data-sx="keyopen">Αλλαγή</button> <button class="mini" data-sx="keyclear">Διαγραφή</button></p>${st.keyOpen ? keyForm : ''}`
+      : `<h2>Προσομοίωση αγώνα</h2><p class="neg">Χρειάζεται το κλειδί API-Football για να φέρει πρόγραμμα και δεδομένα. Βάλε το μία φορά εδώ.</p>${keyForm}`;
+  }
+  async function saveKey() {
+    const inp = $('#sxKey'), msg = $('#sxKeyMsg');
+    const v = inp ? inp.value.trim() : '';
+    if (v.length < 16 || /\s/.test(v)) { if (msg) { msg.className = 'note neg'; msg.textContent = 'Το κλειδί φαίνεται λάθος (πρέπει να είναι μία συνεχόμενη σειρά χαρακτήρων).'; } return; }
+    save('lbd_key', v); st.keyOpen = false; st.fixtures = null;
+    if (msg) { msg.className = 'note'; msg.textContent = 'Έλεγχος κλειδιού…'; }
+    const rem = await D.quota();
+    if (rem == null) { renderIntro(); const m2 = $('#sxKeyMsg'); if (m2) { m2.className = 'note neg'; m2.textContent = 'Το κλειδί αποθηκεύτηκε, αλλά δεν μπόρεσα να το επαληθεύσω (δίκτυο ή λάθος κλειδί). Αν το πρόγραμμα δεν φορτώσει, έλεγξέ το.'; } }
+    mount();
+  }
+
+  // ------------------------------------------------ events
+  function onClick(e) {
+    const b = e.target.closest('[data-sx]');
+    if (!b) return;
+    const a = b.dataset.sx;
+    if (a === 'day') { st.day = b.dataset.d; loadDay(false); }
+    else if (a === 'reload') loadDay(true);
+    else if (a === 'filter') { cfg.filter = b.dataset.f; save('lbd_sim', cfg); renderSchedule(); }
+    else if (a === 'pick') pick(Number(b.dataset.id));
+    else if (a === 'tab') { st.tab = b.dataset.t; refreshTab(); }
+    else if (a === 'savekey') saveKey();
+    else if (a === 'keyopen') { st.keyOpen = !st.keyOpen; renderIntro(); }
+    else if (a === 'keyclear') { try { localStorage.removeItem('lbd_key'); } catch {} st.fixtures = null; st.keyOpen = false; mount(); }
+    else if (a === 'rerun') runMatch(true);
+    else if (a === 'reseed') { st.seed = (st.seed % 90) + 1; recompute(); }
+    else if (a === 'watch') openWatch(Math.floor(Math.random() * 1e9));
+    else if (a === 'likely') {
+      const t = MK.topScores(st.R, 1)[0];
+      const seed = S.findSeed(st.R.params, t.h, t.a, 4242, 6000);
+      openWatch(seed || Math.floor(Math.random() * 1e9));
+    } else if (a === 'pl') { const id = b.dataset.id; st.adj.playerOverride[id] = b.dataset.v; scheduleRecompute(); }
+    else if (a === 'start') {
+      const mn = Math.max(0, Math.min(89, Number($('#stMin').value) || 0));
+      st.adj.start = mn > 0 ? { minute: mn, hg: Number($('#stH').value) || 0, ag: Number($('#stA').value) || 0, redH: 0, redA: 0 } : null;
+      recompute();
+    } else if (a === 'resetadj') { st.adj = { disabled: {}, manual: { hAtt: 0, hDef: 0, aAtt: 0, aDef: 0 }, neutral: false, derby: false, playerOverride: {}, start: null }; recompute(); }
+    else if (a === 'bt') {
+      b.disabled = true; b.textContent = 'Υπολογισμός…';
+      setTimeout(() => { const ms = (st.ctx.matches || []).filter((m) => !m.prev); st.bt = S.backtest(ms, { n: 60, minTrain: Math.min(80, Math.max(30, ms.length - 20)) }) || { none: true }; refreshTab(); }, 30);
+    }
+  }
+  function onChange(e) {
+    const t = e.target;
+    if (t.id === 'cfgDepth') { cfg.depth = t.value; save('lbd_sim', cfg); }
+    else if (t.id === 'cfgN') { cfg.nSim = Number(t.value); save('lbd_sim', cfg); }
+    else if (t.id === 'cfgBank') { cfg.bankroll = Math.max(0, Number(t.value) || 0); save('lbd_sim', cfg); if (st.R) refreshTab(); }
+    else if (t.id === 'cfgEdge') { cfg.minEdge = Math.max(0, Number(t.value) || 0); save('lbd_sim', cfg); if (st.R) refreshTab(); }
+    else if (t.id === 'cfgBlend') { cfg.blendW = Number(t.value); save('lbd_sim', cfg); if (st.ctx) scheduleRecompute(); }
+    else if (t.id === 'sxDate') { if (t.value) { st.day = t.value; loadDay(false); } }
+    else if (t.id === 'sxOnlyOdds') { st.onlyOdds = t.checked; refreshTab(); }
+    else if (t.dataset && t.dataset.sx === 'fac') { st.adj.disabled[t.dataset.id] = !t.checked; scheduleRecompute(); }
+    else if (t.dataset && t.dataset.sx === 'neutral') { st.adj.neutral = t.checked; scheduleRecompute(); }
+    else if (t.dataset && t.dataset.sx === 'derby') { st.adj.derby = t.checked; scheduleRecompute(); }
+  }
+  function onInput(e) {
+    const t = e.target;
+    if (t.id === 'cfgBlend') { const v = $('#cfgBlendV'); if (v) v.textContent = t.value + '%'; }
+    else if (t.dataset && t.dataset.sx === 'man') { st.adj.manual[t.dataset.k] = Number(t.value); const l = $('#m_' + t.dataset.k); if (l) l.textContent = (t.value > 0 ? '+' : '') + t.value + '%'; scheduleRecompute(); }
+    else if (t.id === 'sxQ') { st.q = t.value; renderSchedule(); const q = $('#sxQ'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
+  }
+
+  // ------------------------------------------------ mount
+  let mounted = false;
+  function mount() {
+    const v = $('#viewSim');
+    if (!v) return;
+    if (!mounted) {
+      v.innerHTML = '<section class="card" id="sxIntro"></section><section class="card" id="sxCtl"></section><section class="card"><h2>Πρόγραμμα αγώνων</h2><div id="sxSched"></div></section><div id="sxMatch"></div>';
+      v.addEventListener('click', onClick); v.addEventListener('change', onChange); v.addEventListener('input', onInput);
+      mounted = true;
+    }
+    renderIntro();
+    renderControls();
+    if (st.fixtures === null && !st.loadingDay && D.hasKey()) loadDay(false); else renderSchedule();
+    renderMatch();
+  }
+  window.SimUI = { render: mount, _st: st, _cfg: cfg };
+})();
+
+</script>
+<script>
+window.FORCE_DIRECT = true;
+(function(){ function go(){ if (window.SimUI) window.SimUI.render(); } if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); })();
+</script>
+</body>
+</html>
