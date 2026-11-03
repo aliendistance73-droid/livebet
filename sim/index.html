@@ -847,6 +847,23 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     return arr.slice(0, n || 8);
   };
 
+  /* The score a person expects to see: the most probable scoreline INSIDE the most probable result (1, X or 2).
+     A plain argmax over all scorelines is almost always 1-1 or 1-0 (the Poisson mode sits at 1 goal each when the expected
+     goals are 1-2), so it says nothing about who is favoured. res = '1' | 'X' | '2', pRes = probability of that result. */
+  M.likelyScore = function (R) {
+    let p1 = 0, pX = 0, p2 = 0;
+    for (let i = 0; i <= GMX; i++) for (let j = 0; j <= GMX; j++) { const p = R.mat[i * W + j]; if (i > j) p1 += p; else if (i === j) pX += p; else p2 += p; }
+    const res = p1 >= pX && p1 >= p2 ? '1' : p2 >= pX ? '2' : 'X';
+    let best = null;
+    for (let i = 0; i <= GMX; i++) for (let j = 0; j <= GMX; j++) {
+      if (!(res === '1' ? i > j : res === '2' ? i < j : i === j)) continue;
+      const p = R.mat[i * W + j];
+      if (!best || p > best.p) best = { h: i, a: j, p };
+    }
+    best.res = res; best.pRes = res === '1' ? p1 : res === '2' ? p2 : pX;
+    return best;
+  };
+
   // ===================================================== odds parsing
   const num = (x) => { const v = parseFloat(String(x).replace(',', '.')); return isFinite(v) ? v : null; };
   const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -1454,6 +1471,14 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const fresh = true;   // volatile data is always re-read right before the run
     const stable = (ttl) => ({ ttl, fresh: opts.force });
 
+    // --- news (deep only): starts first and runs beside everything else. The news proxy can take 15-30 s, so the run only
+    //     waits a short grace period at the very end; a late answer is handed over through opts.onLate.
+    const newsP = deep ? task('news', 'Τελευταία νέα (Google News)', async () => {
+      const [h, a] = await Promise.all([D.news(fix.home.name, opts.force), D.news(fix.away.name, opts.force)]);
+      if (!(h && h.length) && !(a && a.length)) return null;
+      return { home: h || [], away: a || [] };
+    }, { skipNote: 'δεν βρέθηκαν νέα ή η πηγή δεν απάντησε — πάτα «Ξανά» στην καρτέλα Νέα', okNote: (v) => v.home.length + v.away.length + ' τίτλοι' }).then((v) => { ctx.news = v; if (ctx.loadedAt && opts.onLate) opts.onLate(ctx); return v; }) : null;
+
     // --- group 1 (parallel): fixture detail, league results, team histories, standings
     const [detail, lgNow, tmH, tmA, stand] = await Promise.all([
       task('fixture', 'Στοιχεία αγώνα (ώρα, διαιτητής, ενδεκάδες)', async () => {
@@ -1556,13 +1581,6 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
       }, { okNote: (v) => v.home.length + '+' + v.away.length + ' παίκτες' }).then((v) => { ctx.players = v; }));
     }
     g2.push(task('weather', 'Καιρός στο γήπεδο', () => D.weather(ctx.fixture, kick), { skipNote: 'δεν βρέθηκε πρόγνωση (πολύ νωρίς ή άγνωστη πόλη)', okNote: (v) => `${Math.round(v.tempC)}°C, άνεμος ${Math.round(v.windKmh)} km/h, βροχή ${v.precipMm.toFixed(1)} mm/ώρα` }).then((v) => { ctx.weather = v; }));
-    if (deep) {
-      g2.push(task('news', 'Τελευταία νέα (Google News / GDELT)', async () => {
-        const [h, a] = await Promise.all([D.news(fix.home.name), D.news(fix.away.name)]);
-        if (!h && !a) return null;
-        return { home: h || [], away: a || [] };
-      }, { skipNote: 'δεν φορτώθηκαν (ο browser μπλόκαρε την πηγή)', okNote: (v) => v.home.length + v.away.length + ' τίτλοι' }).then((v) => { ctx.news = v; }));
-    }
     await Promise.all(g2);
 
     // --- group 3 (deep): corners of recent matches, referee history
@@ -1628,6 +1646,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
         }, { skipNote: 'δεν έχει ανακοινωθεί ή δεν υπάρχει ιστορικό', okNote: (v) => v.n + ' αγώνες' }).then((v) => { ctx.refCards = v; }),
       ]);
     }
+    if (newsP) await Promise.race([newsP, new Promise((r) => setTimeout(r, 2500))]);
     ctx.calls = state.calls - ctx.calls0;
     ctx.loadedAt = Date.now();
     ctx.remaining = state.remaining;
@@ -1669,27 +1688,64 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     return { tempC: av(h.temperature_2m), precipMm: av(h.precipitation), windKmh: mx(h.wind_speed_10m), gustKmh: mx(h.wind_gusts_10m), humidity: av(h.relative_humidity_2m), code: h.weather_code[idx[Math.floor(idx.length / 2)]], place: geo.name, forecastDaysAhead: ahead };
   };
 
-  // ------------------------------------------------ news (best effort; browsers may block cross-origin feeds)
-  D.news = async function (team) {
-    const cached = cget('news:' + team, 20 * 60000);
-    if (cached !== undefined) return cached;
-    let items = null;
-    const q = `"${team}" (τραυματισμός OR απουσίες OR ενδεκάδα OR injury OR lineup OR suspended)`;
-    try {
-      const rss = `https://news.google.com/rss/search?q=${encodeURIComponent(q + ' when:3d')}&hl=el&gl=GR&ceid=GR:el`;
-      const j = await fetchJson('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(rss), 9000);
-      if (j && j.items && j.items.length) items = j.items.slice(0, 6).map((x) => ({ title: String(x.title || '').replace(/\s+-\s+[^-]+$/, ''), source: (x.author || (/ - ([^-]+)$/.exec(x.title || '') || [])[1] || '').trim(), link: x.link, ts: Date.parse(String(x.pubDate || '').replace(' ', 'T') + 'Z') || 0 }));
-    } catch {}
-    if (!items) {
+  // ------------------------------------------------ news (Google News RSS through the rss2json proxy; browsers block Google directly)
+  /* Why this is built the way it is (tested in a real browser, Nov 2026):
+     - Google News only answers rss2json for SIMPLE queries; long OR/quoted/Greek queries come back as "Cannot download this RSS feed".
+     - rss2json is slow on a cold query (up to ~15 s) and drops some requests, so: two simple queries per team in parallel,
+       one retry each, a long timeout, and the caller does not block the simulation on it.
+     - relevance and recency are filtered here instead of inside the Google query. */
+  const decodeEnt = (s) => String(s == null ? '' : s).replace(/&nbsp;/g, ' ').replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  const plain = (s) => String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const GENERIC_TOK = new Set(['fc', 'cf', 'sc', 'ac', 'as', 'afc', 'club', 'the', 'de', 'la', 'el', 'ud', 'cd', 'sv', 'fk', 'sk', 'bk', 'vfb', 'vfl', 'rc', 'ss', 'ii']);
+  function teamRegex(team) {
+    const all = plain(team).split(/[^a-z0-9]+/).filter(Boolean);
+    const key = all.filter((t) => t.length >= 3 && !GENERIC_TOK.has(t));
+    const toks = key.length ? key : all;
+    return toks.length ? new RegExp('\\b(' + toks.join('|') + ')\\b') : null;
+  }
+  async function googleRss(q, ms) {
+    const rss = 'https://news.google.com/rss/search?q=' + encodeURIComponent(q) + '&hl=en-GB&gl=GB&ceid=GB:en';
+    for (let k = 0; k < 2; k++) {
       try {
-        const j = await fetchJson(`https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent('"' + team + '" (injury OR lineup OR suspended OR τραυματισμός)')}&mode=ArtList&maxrecords=6&format=json&timespan=3d&sort=DateDesc`, 9000);
-        if (j && j.articles && j.articles.length) items = j.articles.slice(0, 6).map((x) => ({ title: x.title, source: x.domain, link: x.url, ts: Date.parse((x.seendate || '').replace(/^(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)(\d\d)Z$/, '$1-$2-$3T$4:$5:$6Z')) || 0 }));
+        const j = await fetchJson('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(rss), ms);
+        if (j && j.status === 'ok' && Array.isArray(j.items)) return j.items;
       } catch {}
     }
-    if (items) cset('news:' + team, items, false);
-    return items;
+    return null;
+  }
+  const HOT_NEWS = /(injur|lineup|line-up|team news|suspen|doubt|ruled out|\bmiss|absen|out for|sidelined|fitness|return)/i;
+  D.news = async function (team, force) {
+    if (!force) { const cached = cget('news:' + team, 20 * 60000); if (cached !== undefined) return cached; }
+    const now = Date.now(), re = teamRegex(team);
+    const rows = await Promise.all([`${team} football when:7d`, `${team} injury OR lineup when:7d`].map((q) => googleRss(q, 16000)));
+    const seen = new Set();
+    let items = [];
+    const take = (title, source, link, ts) => {
+      title = String(title || '').trim();
+      const key = plain(title).replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 60);
+      if (!title || seen.has(key)) return;
+      if (ts && now - ts > 7 * DAY) return;
+      if (re && !re.test(plain(title))) return;
+      seen.add(key);
+      items.push({ title, source: String(source || '').trim(), link, ts: ts || 0, hot: HOT_NEWS.test(title) });
+    };
+    for (const arr of rows) for (const x of arr || []) {
+      const raw = decodeEnt(x.title), m = /\s+-\s+([^-]+)$/.exec(raw);
+      take(m ? raw.slice(0, m.index) : raw, (m && m[1]) || x.author, x.link, Date.parse(String(x.pubDate || '').replace(' ', 'T') + 'Z') || 0);
+    }
+    const answered = rows.some((r) => r);
+    if (!items.length) {   // last resort: GDELT (often blocked or slow in browsers, so it is only tried when Google gave nothing)
+      try {
+        const j = await fetchJson(`https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent('"' + team + '" (injury OR lineup OR suspended)')}&mode=ArtList&maxrecords=10&format=json&timespan=3d&sort=DateDesc`, 10000);
+        for (const x of (j && j.articles) || []) take(decodeEnt(x.title), x.domain, x.url, Date.parse((x.seendate || '').replace(/^(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)(\d\d)Z$/, '$1-$2-$3T$4:$5:$6Z')) || 0);
+      } catch {}
+    }
+    items.sort((a, b) => (b.ts + (b.hot ? 1.5 * DAY : 0)) - (a.ts + (a.hot ? 1.5 * DAY : 0)));
+    items = items.slice(0, 6);
+    if (items.length || answered) cset('news:' + team, items, false);
+    return items.length ? items : (answered ? [] : null);
   };
-  D.newsLink = (team) => 'https://news.google.com/search?q=' + encodeURIComponent(team + ' τραυματισμοί απουσίες') + '&hl=el&gl=GR&ceid=GR%3Ael';
+  D.newsLink = (team) => 'https://news.google.com/search?q=' + encodeURIComponent(team + ' injury team news') + '&hl=en-GB&gl=GB&ceid=GB%3Aen';
 
   /* estimate of API calls for a depth (for the quota guard) */
   D.estimate = (depth) => (depth === 'light' ? 8 : depth === 'normal' ? 18 : 44);
@@ -2143,7 +2199,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
           if (down !== depth) { st.note = `Έμειναν ${rem} κλήσεις API σήμερα, οπότε χρησιμοποιώ ${down === 'normal' ? 'κανονικό' : 'ελαφρύ'} βάθος.`; depth = down; }
         }
       }
-      const ctx = await D.loadMatch(fix, { depth, force, onTask: (t) => { if (my !== st.runId) return; const i = st.tasks.findIndex((x) => x.id === t.id); if (i >= 0) st.tasks[i] = Object.assign({}, t); else st.tasks.push(Object.assign({}, t)); renderProgress(); } });
+      const ctx = await D.loadMatch(fix, { depth, force, onLate: (c) => { if (my === st.runId && st.ctx === c && st.tab === 'news') refreshTab(); }, onTask: (t) => { if (my !== st.runId) return; const i = st.tasks.findIndex((x) => x.id === t.id); if (i >= 0) st.tasks[i] = Object.assign({}, t); else st.tasks.push(Object.assign({}, t)); renderProgress(); } });
       if (my !== st.runId) return;
       st.ctx = ctx; st.depthUsed = depth;
       await recompute(my);
@@ -2201,13 +2257,14 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const R = st.R, b = st.build, ctx = st.ctx, mk = st.markets;
     const by = Object.fromEntries(mk.map((m) => [m.key, m]));
     const [cl, cc] = BD.completenessLabel(b.completeness);
-    const top = MK.topScores(R, 5);
+    const top = MK.topScores(R, 4), lk = MK.likelyScore(R);
     const l = b.lambdas;
     let h = `<section class="card sx-sum"><h2>Αποτέλεσμα προσομοίωσης · ${R.n.toLocaleString('el-GR')} αγώνες</h2>
       ${bar3(by['ft:1'].p, by['ft:X'].p, by['ft:2'].p, names)}
       <div class="sx-kv">
         <div><span>Αναμενόμενα γκολ</span><b>${R.mean.hg.toFixed(2)} – ${R.mean.ag.toFixed(2)}</b></div>
-        <div><span>Πιθανότερο σκορ</span><b>${top[0].h}-${top[0].a} (${pc(top[0].p, 1)})</b></div>
+        <div><span>Πιθανότερο σκορ (στο πιθανότερο αποτέλεσμα: ${lk.res === 'X' ? 'ισοπαλία' : lk.res === '1' ? names[0] : names[1]} ${pc(lk.pRes)})</span><b>${lk.h}-${lk.a} (${pc(lk.p, 1)})</b></div>
+        <div><span>Συχνότερα σκορ συνολικά</span><b>${top.map((t) => `${t.h}-${t.a} ${pc(t.p, 1)}`).join(' · ')}</b></div>
         <div><span>Over 2.5</span><b>${pc(by['ou:2.5:over'].p)}</b></div>
         <div><span>GG (BTTS)</span><b>${pc(by['btts:yes'].p)}</b></div>
         <div><span>Ημίχρονο 1/Χ/2</span><b>${pc(by['ht:1'].p)}/${pc(by['ht:X'].p)}/${pc(by['ht:2'].p)}</b></div>
@@ -2219,7 +2276,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
         Αξιοπιστία δεδομένων: <span class="tag ${cc}">${cl} (${Math.round(b.completeness * 100)}%)</span>${b.crossLeague ? ' <span class="tag mid">σύγκριση διαφορετικών λιγκών/κύπελλο</span>' : ''}</div>
       ${ctx.apiPred ? `<div class="muted sx-small">Δεύτερη γνώμη API-Football: ${pc(ctx.apiPred.home)}/${pc(ctx.apiPred.draw)}/${pc(ctx.apiPred.away)}${ctx.apiPred.advice ? ' · ' + esc(ctx.apiPred.advice) : ''}</div>` : ''}
       ${b.blend && b.blend.market ? `<div class="muted sx-small">Αγορά (χωρίς περιθώριο): ${pc(b.blend.market.h)}/${pc(b.blend.market.d)}/${pc(b.blend.market.a)} · καθαρό μοντέλο: ${pc(b.blend.pure.h)}/${pc(b.blend.pure.d)}/${pc(b.blend.pure.a)}</div>` : '<div class="muted sx-small">Δεν υπάρχουν ακόμα αποδόσεις: το αποτέλεσμα βασίζεται μόνο στο μοντέλο.</div>'}
-      <div class="sx-btns"><button class="primary" data-sx="watch">🎮 Δες τον αγώνα</button><button data-sx="likely">🎯 Πιθανότερο σενάριο (${top[0].h}-${top[0].a})</button><button data-sx="reseed">🎲 Νέα προσομοίωση</button><button data-sx="rerun">↻ Ανανέωση δεδομένων &amp; επανάληψη</button></div>
+      <div class="sx-btns"><button class="primary" data-sx="watch">🎮 Δες τον αγώνα</button><button data-sx="likely">🎯 Πιθανότερο σενάριο (${lk.h}-${lk.a})</button><button data-sx="reseed">🎲 Νέα προσομοίωση</button><button data-sx="rerun">↻ Ανανέωση δεδομένων &amp; επανάληψη</button></div>
       <p class="note">Στατιστική εκτίμηση, όχι εγγύηση κέρδους και όχι χρηματοοικονομική συμβουλή. Έλεγξε την πραγματική απόδοση πριν στοιχηματίσεις και παίξε μόνο ό,τι αντέχεις να χάσεις.</p></section>`;
     h += `<div class="seg sx-tabs">${[['tips', '💡 Προτάσεις'], ['mk', '📊 Αγορές'], ['fac', '⚙ Παράγοντες'], ['charts', '📈 Γραφήματα'], ['news', '📰 Νέα'], ['data', '🔎 Δεδομένα']].map(([k, t]) => `<button class="tabbtn${st.tab === k ? ' on' : ''}" data-sx="tab" data-t="${k}">${t}</button>`).join('')}</div>`;
     h += `<section class="card" id="sxTabBody">${tabBody()}</section>`;
@@ -2337,12 +2394,16 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
   function newsHtml() {
     const ctx = st.ctx, f = ctx.fixture;
     let h = '';
-    if (!ctx.news) h += '<p class="muted">Δεν φορτώθηκαν νέα αυτόματα (ο browser ή η πηγή μπλόκαρε το αίτημα, ή το βάθος δεδομένων δεν είναι «Βαθύ»). Δες τα εδώ και ό,τι βρεις πρόσθεσέ το ως διόρθωση στην καρτέλα «Παράγοντες».</p>';
+    const newsTask = st.tasks.find((t) => t.id === 'news');
+    const loading = st.newsBusy || (!ctx.news && newsTask && newsTask.status === 'run');
+    if (loading) h += '<p class="muted">⏳ Φορτώνω νέα από το Google News… (μπορεί να πάρει μέχρι ~30 δευτερόλεπτα, ο πάροχος είναι αργός)</p>';
+    else if (!ctx.news) h += '<p class="muted">Δεν βρέθηκαν νέα ή η πηγή δεν απάντησε στην ώρα της (δωρεάν πάροχος, χαμηλή αξιοπιστία). Πάτα «Ξανά», ή άνοιξε τους συνδέσμους παρακάτω και πρόσθεσε ό,τι βρεις ως διόρθωση στην καρτέλα «Παράγοντες».</p>';
+    if (!loading) h += '<div class="sx-btns"><button data-sx="retrynews">↻ Ξανά τα νέα</button></div>';
     for (const [side, team] of [['home', f.home.name], ['away', f.away.name]]) {
       const items = ctx.news && ctx.news[side];
       h += `<h2 style="margin-top:10px">${esc(team)}</h2>`;
       if (items && items.length) h += items.map((n) => `<div class="sx-news${HOT.test(n.title) ? ' hot' : ''}"><a href="${esc(n.link)}" target="_blank" rel="noopener">${HOT.test(n.title) ? '⚠ ' : ''}${esc(n.title)}</a><div class="muted sx-small">${esc(n.source || '')}${n.ts ? ' · ' + ago(n.ts) : ''}</div></div>`).join('');
-      else h += '<p class="muted sx-small">Κανένας τίτλος.</p>';
+      else if (!loading) h += '<p class="muted sx-small">Κανένας τίτλος.</p>';
       h += `<a class="sx-link" href="${D.newsLink(team)}" target="_blank" rel="noopener">Άνοιγμα ειδήσεων για ${esc(team)} ↗</a>`;
     }
     h += '<p class="note">Οι τίτλοι δεν επηρεάζουν αυτόματα το μοντέλο. Όταν δεις κάτι ουσιαστικό (π.χ. αποβολή βασικού, αλλαγή προπονητή), χρησιμοποίησε τα κουμπιά «Εκτός/Παίζει» ή τις δικές σου διορθώσεις.</p>';
@@ -2423,11 +2484,22 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     else if (a === 'savekey') saveKey();
     else if (a === 'keyopen') { st.keyOpen = !st.keyOpen; renderIntro(); }
     else if (a === 'keyclear') { try { localStorage.removeItem('lbd_key'); } catch {} st.fixtures = null; st.keyOpen = false; mount(); }
+    else if (a === 'retrynews') {
+      const ctx = st.ctx;
+      if (!ctx || st.newsBusy) return;
+      st.newsBusy = true; refreshTab();
+      Promise.all([D.news(ctx.fixture.home.name, true), D.news(ctx.fixture.away.name, true)]).then(([nh, na]) => {
+        st.newsBusy = false;
+        if (st.ctx !== ctx) return;
+        ctx.news = (nh && nh.length) || (na && na.length) ? { home: nh || [], away: na || [] } : null;
+        refreshTab();
+      }, () => { st.newsBusy = false; if (st.ctx === ctx) refreshTab(); });
+    }
     else if (a === 'rerun') runMatch(true);
     else if (a === 'reseed') { st.seed = (st.seed % 90) + 1; recompute(); }
     else if (a === 'watch') openWatch(Math.floor(Math.random() * 1e9));
     else if (a === 'likely') {
-      const t = MK.topScores(st.R, 1)[0];
+      const t = MK.likelyScore(st.R);
       const seed = S.findSeed(st.R.params, t.h, t.a, 4242, 6000);
       openWatch(seed || Math.floor(Math.random() * 1e9));
     } else if (a === 'pl') { const id = b.dataset.id; st.adj.playerOverride[id] = b.dataset.v; scheduleRecompute(); }
