@@ -173,6 +173,26 @@ button.mini { padding: 3px 8px; font-size: 12px; border-radius: 6px; } button.mi
 @media (max-width: 820px) { .sx-title { font-size: 19px; } .sx-tbl td:first-child { max-width: 40vw; } }
 .sx-pbar-top { position: sticky; top: 0; z-index: 5; margin-bottom: 8px; } .sx-stale > section, .sx-stale > div.seg { opacity: .55; transition: opacity .15s; }
 
+/* ---- day scanner ("Σάρωση ημέρας") ---- */
+.sc-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 8px 0; }
+.sc-opts label { display: block; font-size: 12px; color: var(--muted); min-width: 0; }
+.sc-opts select, .sc-opts input[type=number] { width: 100%; margin-top: 3px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px; font: inherit; }
+.sc-chks { display: flex; flex-wrap: wrap; gap: 2px 16px; }
+.sc-est { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin: 8px 0; font-size: 13px; }
+.sc-bet { background: var(--panel2); border: 1px solid var(--line); border-left: 4px solid var(--green); border-radius: 10px; padding: 9px 11px; margin: 8px 0; }
+.sc-bet.par { border-left-color: var(--amber); } .sc-bet.bb { border-left-color: var(--blue); }
+.sc-bet .hd { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.sc-bet .hd b { min-width: 0; overflow-wrap: anywhere; }
+.sc-bet .big { font-size: 16px; font-weight: 700; margin: 3px 0; overflow-wrap: anywhere; }
+.sc-bet .m { font-size: 12px; color: var(--muted); margin: 2px 0; }
+.sc-bet .m b { color: var(--text); }
+.sc-bet button.mini { margin-top: 6px; }
+.sc-stake { font-size: 22px; font-weight: 800; white-space: nowrap; color: var(--green); }
+.sc-bet.par .sc-stake { color: var(--amber); } .sc-bet.bb .sc-stake { color: var(--blue); }
+.sc-leg { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.2fr) auto; gap: 4px 8px; font-size: 13px; padding: 4px 0; border-top: 1px dashed var(--line); align-items: baseline; }
+.sc-leg span:first-child { font-size: 12px; } .sc-leg span:last-child { text-align: right; white-space: nowrap; font-size: 12px; color: var(--muted); }
+@media (max-width: 520px) { .sc-leg { grid-template-columns: minmax(0, 1fr) auto; } .sc-leg span:first-child { grid-column: 1 / -1; } }
+
 header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidden] { display: block; }
 </style>
 </head>
@@ -693,7 +713,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     return new Promise((resolve) => {
       const step = () => {
         const end = Math.min(opts.n, done + opts.chunk);
-        for (; done < end; done++) { run(P, rng, o, null); add(acc, o); }
+        for (; done < end; done++) { run(P, rng, o, null); add(acc, o); if (opts.onSim) opts.onSim(o); }
         if (opts.onProgress) opts.onProgress(done / opts.n);
         if (done < opts.n) { (typeof setTimeout === 'function' ? setTimeout : (f) => f())(step, 0); } else {
           const R = finish(acc);
@@ -709,7 +729,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const P = prepare(params);
     if (opts.calibrate) calibrate(P);
     const rng = mulberry32(opts.seed), o = newOut(), acc = newAcc();
-    for (let i = 0; i < opts.n; i++) { run(P, rng, o, null); add(acc, o); }
+    for (let i = 0; i < opts.n; i++) { run(P, rng, o, null); add(acc, o); if (opts.onSim) opts.onSim(o); }
     const R = finish(acc); R.params = P; return R;
   }
 
@@ -1473,7 +1493,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
 
     // --- news (deep only): starts first and runs beside everything else. The news proxy can take 15-30 s, so the run only
     //     waits a short grace period at the very end; a late answer is handed over through opts.onLate.
-    const newsP = deep ? task('news', 'Τελευταία νέα (Google News)', async () => {
+    const newsP = deep && opts.news !== false ? task('news', 'Τελευταία νέα (Google News)', async () => {
       const [h, a] = await Promise.all([D.news(fix.home.name, opts.force), D.news(fix.away.name, opts.force)]);
       if (!(h && h.length) && !(a && a.length)) return null;
       return { home: h || [], away: a || [] };
@@ -2082,6 +2102,403 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
 </script>
 <script>
 'use strict';
+/* Day scanner: runs the simulator over every not-yet-started match of a day, then ranks
+     - value singles (goals / result / corners / cards, priced by the bookmakers),
+     - 3-match parlays (each leg >= 1.40, one leg per match),
+     - same-match bet builders (priced combos + free-form builders from the joint simulation),
+   and splits a bankroll over the best of them.
+   Pure logic (collector, evalSingles, builders, compile, allocate) has no DOM access, so it also runs in Node tests. */
+(function (root) {
+  const SC = {};
+  const dep = (name, mod) => root[name] || (typeof require === 'function' ? require(mod) : null);
+  const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
+
+  SC.MIN_SINGLE = 1.30;       // no pick below this price
+  SC.MIN_LEG = 1.40;          // every parlay leg
+  SC.PARLAY_LEGS = 3;         // exactly 3 different matches
+  const EXTRA_UNC = { corners: 0.03, cards: 0.04 };   // corners / cards come from the model alone (not blended with the market)
+  const SUSPECT = { corners: 0.2, cards: 0.2, def: 0.3 };   // an edge above this almost always means the model is missing something
+  const WL = /^(ft|dc|dnb|ou|btts|tt|cs|ah|co|cd|cmb|ht_ou):/;
+  const ref = (b) => (b.n >= 3 ? b.med : b.o);          // reference price: the median bookmaker when several quote it, else the only price
+  SC.refPrice = ref;
+
+  const famOf = (key) => {
+    if (/^(ft|dc|dnb|ah):/.test(key)) return 'res';
+    if (/^ou:/.test(key)) return 'ou';
+    if (/^btts:/.test(key)) return 'btts';
+    if (/^tt:h:/.test(key)) return 'tth';
+    if (/^tt:a:/.test(key)) return 'tta';
+    if (/^cs:/.test(key)) return 'cs' + key.slice(3);
+    if (/^co:ou/.test(key)) return 'co';
+    if (/^co:h/.test(key)) return 'coh';
+    if (/^co:a/.test(key)) return 'coa';
+    if (/^co:/.test(key)) return 'co1x2';
+    if (/^cd:/.test(key)) return 'cd';
+    if (/^ht_ou/.test(key)) return 'htou';
+    return 'cmb';
+  };
+  SC.famOf = famOf;
+  const conflicts = (a, b) => a === b || (a === 'cmb' && /^(res|ou|btts)$/.test(b)) || (b === 'cmb' && /^(res|ou|btts)$/.test(a));
+  /* user-facing toggle a market group belongs to */
+  const toggleOf = (group) => (group === 'corners' ? 'corners' : group === 'cards' ? 'cards' : group === 'combo' ? 'combos' : 'goals');
+
+  // ===================================================== single bets
+  /* All candidate singles of one match (value or not — compile() applies the thresholds so they can change without re-simulating).
+     markets: MK.markets(R, names). best: odds map from the odds parser. info: {unc, haveCorners, haveCards, minOdds, maxOdds} */
+  SC.evalSingles = function (markets, best, info) {
+    const MK = dep('SimMarkets', './simmarkets.js');
+    info = Object.assign({ unc: 0.03, haveCorners: true, haveCards: true, minOdds: SC.MIN_SINGLE, maxOdds: 3.5, minP: 0.25 }, info || {});
+    const rows = [];
+    for (const m of markets) {
+      if (!WL.test(m.key)) continue;
+      const b = best[m.key];
+      if (!b || !(m.p > 0.001)) continue;
+      if (m.group === 'corners' && !info.haveCorners) continue;
+      if (m.group === 'cards' && !info.haveCards) continue;
+      const price = ref(b), u = info.unc + (EXTRA_UNC[m.group] || 0), push = m.type === 'push';
+      const pw = Math.max(0, m.p - u);
+      const plC = push ? Math.max(0, 1 - m.p - (m.pp || 0)) : 1 - pw;
+      const plR = push ? 1 - m.p - (m.pp || 0) : 1 - m.p;
+      const ev = m.p * (price - 1) - plR, evCons = pw * (price - 1) - plC;
+      const fair = push ? (1 - (m.pp || 0)) / m.p : 1 / m.p;
+      const kel = MK.kelly(m, price, 1, 1, u);
+      rows.push({
+        key: m.key, group: m.group, fam: famOf(m.key), label: m.label, p: m.p, pCons: pw, price, bestOdds: b.o, book: b.book, nBooks: b.n,
+        fair, minOdds: fair * 1.06, ev, evCons, kelly: kel, unc: u, push,
+        eligible: price >= info.minOdds && price <= info.maxOdds && m.p >= info.minP,
+        suspicious: ev > (SUSPECT[m.group] || SUSPECT.def),
+      });
+    }
+    return rows;
+  };
+
+  /* best rows with distinct (non conflicting) families */
+  function pickDistinct(rows, n) {
+    const out = [];
+    for (const r of rows.slice().sort((a, b) => b.evCons - a.evCons)) {
+      if (out.some((x) => conflicts(x.fam, r.fam))) continue;
+      out.push(r);
+      if (out.length >= n) break;
+    }
+    return out;
+  }
+
+  // ===================================================== free-form bet builders (joint probabilities from the simulation)
+  const LEGS = [];
+  (function () {
+    const add = (key, fam, lab, f) => LEGS.push({ key, fam, lab, f });
+    add('ft:1', 'res', (n) => `1 · ${n.h}`, (o) => o.hg > o.ag);
+    add('ft:2', 'res', (n) => `2 · ${n.a}`, (o) => o.hg < o.ag);
+    add('dc:1X', 'res', (n) => `1Χ · ${n.h} ή ισοπαλία`, (o) => o.hg >= o.ag);
+    add('dc:X2', 'res', (n) => `Χ2 · ισοπαλία ή ${n.a}`, (o) => o.hg <= o.ag);
+    add('ah:h:-1.5', 'res', (n) => `${n.h} −1.5 (νίκη με 2+ γκολ)`, (o) => o.hg - o.ag >= 2);
+    add('ah:a:1.5', 'res', (n) => `${n.a} +1.5`, (o) => o.ag - o.hg > -2);
+    add('ah:h:1.5', 'res', (n) => `${n.h} +1.5`, (o) => o.hg - o.ag > -2);
+    add('ah:a:-1.5', 'res', (n) => `${n.a} −1.5 (νίκη με 2+ γκολ)`, (o) => o.ag - o.hg >= 2);
+    for (const L of [1.5, 2.5, 3.5]) add(`ou:${L}:over`, 'ou', () => `Over ${L} γκολ`, (o) => o.hg + o.ag > L);
+    for (const L of [2.5, 3.5, 4.5]) add(`ou:${L}:under`, 'ou', () => `Under ${L} γκολ`, (o) => o.hg + o.ag < L);
+    add('btts:yes', 'btts', () => 'GG', (o) => o.hg > 0 && o.ag > 0);
+    add('btts:no', 'btts', () => 'NG', (o) => o.hg === 0 || o.ag === 0);
+    for (const L of [0.5, 1.5]) {
+      add(`tt:h:${L}:over`, 'tth', (n) => `${n.h} Over ${L} γκολ`, (o) => o.hg > L);
+      add(`tt:a:${L}:over`, 'tta', (n) => `${n.a} Over ${L} γκολ`, (o) => o.ag > L);
+    }
+    for (const L of [8.5, 9.5, 10.5, 11.5]) {
+      add(`co:ou:${L}:over`, 'co', () => `Κόρνερ Over ${L}`, (o) => o.coH + o.coA > L);
+      add(`co:ou:${L}:under`, 'co', () => `Κόρνερ Under ${L}`, (o) => o.coH + o.coA < L);
+    }
+    for (const L of [2.5, 3.5, 4.5, 5.5]) {
+      add(`cd:ou:${L}:over`, 'cd', () => `Κάρτες Over ${L}`, (o) => o.yH + o.yA + o.rH + o.rA > L);
+      add(`cd:ou:${L}:under`, 'cd', () => `Κάρτες Under ${L}`, (o) => o.yH + o.yA + o.rH + o.rA < L);
+    }
+  })();
+  SC.LEGS = LEGS;
+  const legGroup = (key) => (/^co:/.test(key) ? 'corners' : /^cd:/.test(key) ? 'cards' : 'goals');
+
+  function pop32(x) {
+    x = x - ((x >>> 1) & 0x55555555);
+    x = (x & 0x33333333) + ((x >>> 2) & 0x33333333);
+    return Math.imul((x + (x >>> 4)) & 0x0F0F0F0F, 0x01010101) >>> 24;
+  }
+  /* records, per simulated match, which builder legs came true (one bit per leg and simulation) */
+  SC.collector = function (n) {
+    const W = (n + 31) >>> 5, bits = LEGS.map(() => new Uint32Array(W));
+    let i = 0;
+    return {
+      bits,
+      get n() { return i; },
+      add(o) {
+        const w = i >>> 5, m = 1 << (i & 31);
+        for (let k = 0; k < LEGS.length; k++) if (LEGS[k].f(o)) bits[k][w] |= m;
+        i++;
+      },
+    };
+  };
+  const count = (arrs) => {
+    let c = 0;
+    const a = arrs[0], b = arrs[1], d = arrs[2];
+    for (let w = 0; w < a.length; w++) c += pop32(d ? a[w] & b[w] & d[w] : b ? a[w] & b[w] : a[w]);
+    return c;
+  };
+
+  /* Builder candidates of one match: 2- and 3-leg combinations whose legs all have a real bookmaker price.
+     The bookmaker's own builder price is not visible, so each builder carries
+       fair     = 1/p of the joint outcome (from the simulation, correlation included),
+       minOdds  = fair × 1.06 (below this it is not worth playing),
+       naive    = product of the single-leg prices (an upper bound for positively correlated legs),
+       est      = an ASSUMED builder price (see below), used only for ranking. */
+  SC.builders = function (col, info) {
+    info = Object.assign({ best: {}, names: { h: 'Home', a: 'Away' }, unc: 0.03, haveCorners: true, haveCards: true }, info || {});
+    const n = col.n;
+    if (!n) return [];
+    const cand = [];
+    LEGS.forEach((l, k) => {
+      const grp = legGroup(l.key);
+      if (grp === 'corners' && !info.haveCorners) return;
+      if (grp === 'cards' && !info.haveCards) return;
+      const b = info.best[l.key];
+      if (!b) return;
+      const p = count([col.bits[k]]) / n;
+      if (p < 0.3 || p > 0.95) return;
+      cand.push({ k, key: l.key, fam: l.fam, grp, p, price: ref(b), lab: l.lab(info.names) });
+    });
+    const out = [];
+    const consider = (idx) => {
+      const legs = idx.map((i) => cand[i]);
+      const pj = count(legs.map((x) => col.bits[x.k])) / n;
+      const pMin = Math.min(...legs.map((x) => x.p));
+      if (pj < 0.18 || pj > 0.72 || pj >= 0.985 * pMin) return;    // too rare, too safe, or one leg already implies the other
+      if (legs.length === 3) {   // a leg that is implied by the other two adds nothing (e.g. GG together with «Home Over 0.5»)
+        for (let d = 0; d < 3; d++) {
+          const rest = legs.filter((_, q) => q !== d);
+          if (pj >= 0.985 * (count(rest.map((x) => col.bits[x.k])) / n)) return;
+        }
+      }
+      const naive = legs.reduce((s, x) => s * x.price, 1);
+      // Estimated builder price: the bookmaker prices the joint outcome with its own (correlation-aware) probability, so what is
+      // left for us is only how far each leg is mispriced against our model, minus the extra margin builders carry:
+      //   est = Π(leg ratio) / (p_joint × (1 + builder margin)),  leg ratio = p_model / (0.95 / price)
+      const rProd = legs.reduce((s, x) => s * (x.p * x.price / 0.95), 1), mB = 0.04 + 0.025 * (legs.length - 1);
+      const est = Math.min(naive, rProd / (pj * (1 + mB)));
+      const unc = Math.min(0.08, info.unc * (1 + 0.5 * (legs.length - 1)) + Math.max(...legs.map((x) => EXTRA_UNC[x.grp] || 0)));
+      const pCons = Math.max(0, pj - unc), fair = 1 / pj;
+      if (est < 1.45 || est > 7) return;
+      const evEst = pCons * est - 1;
+      out.push({
+        legs: legs.map((x) => ({ key: x.key, label: x.lab, p: x.p, price: x.price })), groups: [...new Set(legs.map((x) => x.grp))],
+        p: pj, pCons, fair, minOdds: fair * 1.06, naive, est, evEst, unc, indep: legs.reduce((s, x) => s * x.p, 1),
+      });
+    };
+    for (let a = 0; a < cand.length; a++) for (let b = a + 1; b < cand.length; b++) {
+      if (cand[a].fam === cand[b].fam) continue;
+      consider([a, b]);
+      for (let c = b + 1; c < cand.length; c++) {
+        if (cand[c].fam === cand[a].fam || cand[c].fam === cand[b].fam) continue;
+        consider([a, b, c]);
+      }
+    }
+    out.sort((x, y) => y.evEst - x.evEst);
+    // keep a varied top: no two builders with the same set of legs minus one
+    const keep = [];
+    for (const r of out) {
+      // skip a builder that shares all but one leg with an already kept one (near duplicate)
+      if (keep.some((x) => x.legs.filter((l) => r.legs.some((q) => q.key === l.key)).length >= Math.min(x.legs.length, r.legs.length))) continue;
+      keep.push(r);
+      if (keep.length >= 8) break;
+    }
+    return keep;
+  };
+
+  // ===================================================== one match
+  async function scanOne(fix, o) {
+    const S = dep('Sim', './sim.js'), MK = dep('SimMarkets', './simmarkets.js'), BD = dep('SimBuild', './simbuild.js'), D = dep('SimData', './simdata.js');
+    const ctx = await D.loadMatch(fix, { depth: o.depth, news: false, force: false });
+    const b = BD.run(ctx, { halfLife: 100, blendW: o.blendW });
+    if (b.error) return { status: 'skip', note: b.error };
+    const col = SC.collector(o.nSim);
+    const R = await S.simulate(b.params, { n: o.nSim, seed: 700001 + (fix.id % 99991), onSim: col.add });
+    const f = ctx.fixture, names = { h: f.home.name, a: f.away.name };
+    const mk = MK.markets(R, names), by = Object.fromEntries(mk.map((m) => [m.key, m]));
+    const best = (ctx.odds && ctx.odds.best) || {};
+    const have = Object.keys(best).length > 0;
+    const info = { unc: b.unc, haveCorners: !!ctx.corners, haveCards: !!ctx.teamStats, best, names };
+    const rec = {
+      status: 'ok', noOdds: !have, ts: f.ts, completeness: b.completeness, crossLeague: !!b.crossLeague, lineups: !!ctx.lineups, nBooks: (ctx.odds && ctx.odds.nBooks) || 0,
+      depth: o.depth, hasCorners: !!ctx.corners, hasCards: !!ctx.teamStats, referee: f.referee || null, calls: ctx.calls,
+      sum: { p1: by['ft:1'].p, pX: by['ft:X'].p, p2: by['ft:2'].p, o25: by['ou:2.5:over'].p, gg: by['btts:yes'].p, xh: R.mean.hg, xa: R.mean.ag, corners: R.mean.coH + R.mean.coA, cards: R.mean.yH + R.mean.yA + R.mean.rH + R.mean.rA },
+      rows: have ? SC.evalSingles(mk, best, info) : [],
+      builders: have ? SC.builders(col, info) : [],
+    };
+    return rec;
+  }
+  SC.scanOne = scanOne;
+
+  async function throttle(D, hooks) {
+    for (let k = 0; k < 45; k++) {
+      const left = D.state.minuteLeft;
+      if (left == null || left > 14 || (hooks.cancelled && hooks.cancelled())) return;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+  const slim = (f) => ({ id: f.id, ts: f.ts, league: { id: f.league.id, name: f.league.name, country: f.league.country }, home: { name: f.home.name }, away: { name: f.away.name } });
+
+  /* Scans the fixtures (two at a time). hooks: {onUpdate(i, rec), cancelled()}. Returns one record per fixture. */
+  SC.run = async function (fixtures, o, hooks) {
+    hooks = hooks || {};
+    const D = dep('SimData', './simdata.js');
+    const out = fixtures.map((f) => ({ fix: slim(f), status: 'wait' }));
+    let next = 0, fatal = null;
+    const worker = async () => {
+      while (!fatal && !(hooks.cancelled && hooks.cancelled())) {
+        const i = next++;
+        if (i >= fixtures.length) return;
+        const rec = out[i];
+        rec.status = 'run'; if (hooks.onUpdate) hooks.onUpdate(i, rec);
+        try {
+          await throttle(D, hooks);
+          Object.assign(rec, await scanOne(fixtures[i], o));
+        } catch (e) {
+          rec.status = 'err'; rec.note = String((e && e.message) || e).slice(0, 160);
+          if (/κλειδί|HTTP 40[13]|Δεν υπάρχει/i.test(rec.note)) fatal = rec.note;
+        }
+        if (hooks.onUpdate) hooks.onUpdate(i, rec);
+      }
+    };
+    await Promise.all([worker(), worker()]);
+    for (const r of out) if (r.status === 'wait' || r.status === 'run') { r.status = 'skip'; r.note = fatal ? 'διακόπηκε: ' + fatal : 'δεν σαρώθηκε (διακοπή)'; }
+    return out;
+  };
+
+  // ===================================================== combine everything
+  SC.PROFILES = {
+    cons: { name: 'Συντηρητικό', single: 0.65, parlay: 0.25, builder: 0.10 },
+    bal: { name: 'Ισορροπημένο', single: 0.50, parlay: 0.30, builder: 0.20 },
+    aggr: { name: 'Επιθετικό', single: 0.30, parlay: 0.40, builder: 0.30 },
+  };
+
+  /* Splits a whole bankroll (integer dollars) over the items. items: [{bucket, w}], shares: {bucket: share}.
+     The result always sums to exactly B; every stake is >= minStake (the weakest items are dropped until that holds). */
+  SC.allocate = function (items, B, shares, minStake) {
+    minStake = minStake || 5;
+    B = Math.round(B);
+    let list = items.filter((x) => x.w > 0);
+    const cnt = {};
+    for (let guard = 0; guard < 60 && list.length; guard++) {
+      cnt.single = 0; cnt.parlay = 0; cnt.builder = 0;
+      list.forEach((x) => { cnt[x.bucket]++; });
+      const sh = {};
+      let tot = 0;
+      for (const k of Object.keys(shares)) { if (!cnt[k]) continue; sh[k] = shares[k] * Math.min(1, cnt[k] / (k === 'single' ? 3 : 2)); tot += sh[k]; }
+      if (!tot) return [];
+      const wsum = {};
+      list.forEach((x) => { wsum[x.bucket] = (wsum[x.bucket] || 0) + x.w; });
+      const raw = list.map((x) => B * (sh[x.bucket] / tot) * (x.w / wsum[x.bucket]));
+      const mn = Math.min(...raw);
+      if (mn >= minStake - 1e-9 || list.length === 1) {
+        const fl = raw.map(Math.floor);
+        let rem = B - fl.reduce((a, b) => a + b, 0);
+        const order = raw.map((r, i) => [r - fl[i], i]).sort((a, b) => b[0] - a[0]);
+        for (let k = 0; rem > 0; k = (k + 1) % order.length, rem--) fl[order[k][1]]++;
+        return list.map((x, i) => Object.assign({}, x, { stake: fl[i] }));
+      }
+      list.splice(raw.indexOf(mn), 1);
+    }
+    return [];
+  };
+
+  const byEvCons = (a, b) => b.evCons - a.evCons;
+  const fk = (p, odds) => { const f = (p * odds - 1) / (odds - 1); return f > 0 ? f : 0; };
+
+  /* matches: records from SC.run (or restored). o: {minEdge, bankroll, profile, en:{goals,cards,corners,combos,parlay}} */
+  SC.compile = function (matches, o) {
+    o = Object.assign({ minEdge: 0.03, bankroll: 300, profile: 'bal', perMatch: 2, minLegP: 0.35, minCompl: 0.4 }, o || {});
+    o.en = Object.assign({ goals: true, cards: true, corners: true, combos: true, parlay: true }, o.en || {});
+    const ok = matches.filter((m) => m.status === 'ok' && !m.noOdds);
+    const tag = (r, m) => Object.assign({}, r, { mid: m.fix.id, ts: m.fix.ts, match: `${m.fix.home.name} – ${m.fix.away.name}`, league: m.fix.league.name, compl: m.completeness, lineups: m.lineups, lowData: m.completeness < o.minCompl });
+    const singles = [], suspicious = [], priced = [], pool = [], bbAll = [];
+    for (const m of ok) {
+      const rows = (m.rows || []).filter((r) => r.eligible && o.en[toggleOf(r.group)]);
+      const val = rows.filter((r) => r.ev >= o.minEdge && r.evCons > 0);
+      suspicious.push(...val.filter((r) => r.suspicious).map((r) => tag(r, m)));
+      const good = val.filter((r) => !r.suspicious);
+      pickDistinct(good.filter((r) => r.group !== 'combo'), o.perMatch).forEach((r) => singles.push(tag(r, m)));
+      pickDistinct(good.filter((r) => r.group === 'combo'), 1).forEach((r) => priced.push(tag(r, m)));
+      if (m.completeness >= o.minCompl) {
+        pickDistinct(rows.filter((r) => r.group !== 'combo' && r.price >= SC.MIN_LEG && r.evCons >= 0 && r.pCons >= o.minLegP && !r.suspicious), 2).forEach((r) => pool.push(tag(r, m)));
+        if (o.en.combos) {
+          (m.builders || []).filter((b) => b.evEst > 0 && b.groups.every((g) => o.en[g]) && b.p >= 0.18).slice(0, 2)
+            .forEach((b) => bbAll.push(Object.assign({}, b, { mid: m.fix.id, ts: m.fix.ts, match: `${m.fix.home.name} – ${m.fix.away.name}`, league: m.fix.league.name, lineups: m.lineups, compl: m.completeness })));
+        }
+      }
+    }
+    singles.sort(byEvCons); priced.sort(byEvCons); bbAll.sort((a, b) => b.evEst - a.evEst);
+
+    // parlays: exactly 3 different matches, each leg >= 1.40
+    const parlays = [];
+    if (o.en.parlay) {
+      const byM = new Map();
+      pool.forEach((l) => { if (!byM.has(l.mid)) byM.set(l.mid, []); byM.get(l.mid).push(l); });
+      const mids = [...byM.keys()], all = [];
+      for (let i = 0; i < mids.length; i++) for (let j = i + 1; j < mids.length; j++) for (let k = j + 1; k < mids.length; k++)
+        for (const a of byM.get(mids[i])) for (const b of byM.get(mids[j])) for (const c of byM.get(mids[k])) {
+          const odds = a.price * b.price * c.price, p = a.p * b.p * c.p, pc = a.pCons * b.pCons * c.pCons;
+          if (odds > 14) continue;
+          all.push({ legs: [a, b, c], odds, p, pCons: pc, ev: p * odds - 1, evCons: pc * odds - 1 });
+        }
+      all.sort(byEvCons);
+      for (const c of all) {
+        if (c.evCons <= 0) break;
+        const share = (x) => x.legs.filter((l) => c.legs.some((q) => q.mid === l.mid && q.key === l.key)).length;
+        if (parlays.some((x) => share(x) > 1)) continue;
+        parlays.push(c);
+        if (parlays.length >= 3) break;
+      }
+    }
+
+    // builders: priced combos + free-form ones, one per match
+    const builders = [];
+    const seenM = new Set();
+    const bbCands = priced.map((r) => ({ kind: 'real', mid: r.mid, ts: r.ts, match: r.match, league: r.league, label: r.label, p: r.p, pCons: r.pCons, price: r.price, fair: r.fair, minOdds: r.minOdds, evCons: r.evCons, ev: r.ev, lineups: r.lineups, book: r.book, bestOdds: r.bestOdds, lowData: r.lowData }))
+      .concat(bbAll.map((b) => ({ kind: 'bb', mid: b.mid, ts: b.ts, match: b.match, league: b.league, legs: b.legs, p: b.p, pCons: b.pCons, price: b.est, fair: b.fair, minOdds: b.minOdds, naive: b.naive, evCons: b.evEst, ev: b.p * b.est - 1, lineups: b.lineups, indep: b.indep })));
+    bbCands.sort(byEvCons);
+    for (const b of bbCands) { if (seenM.has(b.mid)) continue; seenM.add(b.mid); builders.push(b); if (builders.length >= 5) break; }
+
+    // allocation of the whole bankroll. One match may sit in at most 3 of the chosen bets (less correlated exposure).
+    const items = [];
+    const usedM = new Set(), expo = new Map();
+    const can = (mids) => mids.every((m) => (expo.get(m) || 0) < 3);
+    const take = (mids) => mids.forEach((m) => expo.set(m, (expo.get(m) || 0) + 1));
+    for (const s of singles) { if (items.filter((x) => x.bucket === 'single').length >= 5) break; if (usedM.has(s.mid) || s.lowData) continue; usedM.add(s.mid); take([s.mid]); items.push({ bucket: 'single', kind: 'single', ref: s, w: clamp(fk(s.pCons, s.price), 0.003, 0.25) }); }
+    let np = 0;
+    for (const p of parlays) { if (np >= 2) break; const mids = p.legs.map((l) => l.mid); if (!can(mids)) continue; take(mids); np++; items.push({ bucket: 'parlay', kind: 'parlay', ref: p, w: clamp(fk(p.pCons, p.odds), 0.003, 0.25) }); }
+    let nb = 0;
+    for (const b of builders) { if (nb >= 2) break; if (b.lowData || !can([b.mid])) continue; take([b.mid]); nb++; items.push({ bucket: 'builder', kind: b.kind, ref: b, w: clamp(fk(b.pCons, b.price), 0.003, 0.25) }); }
+    // Kelly fractions are noisy when the model is slightly off, so the split inside a bucket is flattened towards equal stakes
+    for (const bk of ['single', 'parlay', 'builder']) {
+      const g = items.filter((x) => x.bucket === bk);
+      if (!g.length) continue;
+      const mean = g.reduce((t, x) => t + x.w, 0) / g.length;
+      g.forEach((x) => { x.w = 0.5 + 0.5 * (x.w / mean); });
+    }
+    const prof = SC.PROFILES[o.profile] || SC.PROFILES.bal;
+    const plan = SC.allocate(items, o.bankroll, { single: prof.single, parlay: prof.parlay, builder: prof.builder }, 5);
+    const stats = { bets: plan.length, evCons: 0, ev: 0, top: 0 };
+    for (const it of plan) {
+      const r = it.ref, odds = it.kind === 'parlay' ? r.odds : r.price, pc = r.pCons, p = r.p;
+      it.odds = odds; it.ret = it.stake * odds;
+      it.evUsd = it.stake * (pc * odds - 1);
+      stats.evCons += it.evUsd; stats.ev += it.stake * (p * odds - 1); stats.top = Math.max(stats.top, it.stake);
+    }
+    plan.sort((a, b) => ({ single: 0, parlay: 1, builder: 2 }[a.bucket] - { single: 0, parlay: 1, builder: 2 }[b.bucket]) || b.stake - a.stake);
+    return { singles, parlays, builders, suspicious, plan, stats, bankroll: o.bankroll, profile: o.profile, counts: { ok: ok.length, noOdds: matches.filter((m) => m.status === 'ok' && m.noOdds).length, skipped: matches.filter((m) => m.status !== 'ok').length } };
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = SC; else root.SimScan = SC;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+'use strict';
 /* "Προσομοίωση" tab: daily schedule → pick a match → fresh data pull → Monte-Carlo simulation → betting analysis. */
 (function () {
   const S = window.Sim, MK = window.SimMarkets, BD = window.SimBuild, D = window.SimData;
@@ -2095,7 +2512,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
   const WD = ['Κυρ', 'Δευ', 'Τρί', 'Τετ', 'Πέμ', 'Παρ', 'Σάβ'];
   const athensDay = (d) => (d || new Date()).toLocaleDateString('sv-SE', { timeZone: 'Europe/Athens' });
   const addDays = (s, n) => { const d = new Date(s + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-  const hhmm = (ts) => new Date(ts).toLocaleTimeString('el-GR', { timeZone: 'Europe/Athens', hour: '2-digit', minute: '2-digit' });
+  const hhmm = (ts) => new Date(ts).toLocaleTimeString('el-GR', { timeZone: 'Europe/Athens', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
   const fmtDT = (ts) => new Date(ts).toLocaleString('el-GR', { timeZone: 'Europe/Athens', weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
   const ago = (ts) => { const m = Math.round((Date.now() - ts) / 60000); return m < 1 ? 'μόλις τώρα' : m < 60 ? `πριν ${m}'` : `πριν ${Math.round(m / 60)} ώρ.`; };
 
@@ -2113,6 +2530,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     st.loadingDay = true; st.dayErr = null; renderSchedule();
     try { st.fixtures = await D.getDay(st.day, force); } catch (e) { st.dayErr = e.message; st.fixtures = null; }
     st.loadingDay = false; renderSchedule();
+    if (sc.open && sc.view === 'setup') renderScan();
   }
   function dayChips() {
     const today = athensDay();
@@ -2144,7 +2562,8 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const groups = new Map();
     for (const f of list) { const k = f.league.id; if (!groups.has(k)) groups.set(k, { l: f.league, items: [] }); groups.get(k).items.push(f); }
     const arr = [...groups.values()].sort((a, b) => (BIG.has(b.l.id) ? 1 : 0) - (BIG.has(a.l.id) ? 1 : 0) || a.l.country.localeCompare(b.l.country) || a.l.name.localeCompare(b.l.name));
-    let h = `<div class="seg" id="sxDays">${dayChips()}</div>
+    const nScan = D.hasKey() && st.fixtures ? scanCandidates().length : 0;
+    let h = (D.hasKey() ? `<div class="sx-btns" style="margin:0 0 10px"><button class="primary" data-sx="scanopen">🔎 Σάρωση ημέρας — βρες τα καλύτερα στοιχήματα</button>${st.fixtures ? `<span class="muted sx-small">${nScan} αγώνες δεν έχουν ξεκινήσει${sc.out && !sc.open ? ' · υπάρχει αποθηκευμένη σάρωση ' + ago(sc.at) : ''}</span>` : ''}</div>` : '') + `<div class="seg" id="sxDays">${dayChips()}</div>
       <div class="sx-row2"><input type="date" id="sxDate" value="${st.day}"><input type="search" id="sxQ" placeholder="Αναζήτηση ομάδας / λίγκας" value="${esc(st.q)}"><button data-sx="reload" title="Ανανέωση προγράμματος">⟳</button></div>
       <div class="seg"><button class="tabbtn${cfg.filter === 'big' ? ' on' : ''}" data-sx="filter" data-f="big">Μεγάλες λίγκες</button><button class="tabbtn${cfg.filter === 'all' ? ' on' : ''}" data-sx="filter" data-f="all">Όλες</button><button class="tabbtn${cfg.filter === 'star' ? ' on' : ''}" data-sx="filter" data-f="star">★ Αγαπημένα</button></div>`;
     if (st.loadingDay) h += '<p class="muted">Φόρτωση προγράμματος…</p>';
@@ -2456,7 +2875,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const key = LS('lbd_key', '');
     const keyForm = `<div class="sx-row2" style="margin-top:8px"><input type="password" id="sxKey" placeholder="Κλειδί API-Football" autocomplete="off" spellcheck="false"><button class="primary" data-sx="savekey">Αποθήκευση</button></div><p class="note" id="sxKeyMsg">Το κλειδί μένει μόνο σε αυτό το κινητό/πρόγραμμα περιήγησης και στέλνεται μόνο στο API-Football. Το βρίσκεις στο dashboard.api-football.com.</p>`;
     box.innerHTML = has
-      ? `<h2>Προσομοίωση αγώνα</h2><p class="note" style="margin:0">Διάλεξε αγώνα από το πρόγραμμα. Πριν από κάθε προσομοίωση φέρνω τα τελευταία δεδομένα και νέα, και μετά τρέχω χιλιάδες εικονικούς αγώνες. Δες value ως προς τις αποδόσεις, κόρνερ, κάρτες, ημίχρονο και ολόκληρο τον αγώνα λεπτό-λεπτό.</p>
+      ? `<h2>Προσομοίωση αγώνα</h2><p class="note" style="margin:0">Διάλεξε αγώνα από το πρόγραμμα. Πριν από κάθε προσομοίωση φέρνω τα τελευταία δεδομένα και νέα, και μετά τρέχω χιλιάδες εικονικούς αγώνες. Δες value ως προς τις αποδόσεις, κόρνερ, κάρτες, ημίχρονο και ολόκληρο τον αγώνα λεπτό-λεπτό. Ή πάτα «Σάρωση ημέρας» για να τρέξουν όλοι οι αγώνες που δεν έχουν ξεκινήσει και να προταθούν μονά, παρολί και bet builder.</p>
          <p class="note" style="margin:8px 0 0">🔑 Κλειδί API: …${esc(String(key).slice(-4))} <button class="mini" data-sx="keyopen">Αλλαγή</button> <button class="mini" data-sx="keyclear">Διαγραφή</button></p>${st.keyOpen ? keyForm : ''}`
       : `<h2>Προσομοίωση αγώνα</h2><p class="neg">Χρειάζεται το κλειδί API-Football για να φέρει πρόγραμμα και δεδομένα. Βάλε το μία φορά εδώ.</p>${keyForm}`;
   }
@@ -2471,6 +2890,212 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     mount();
   }
 
+  // ------------------------------------------------ day scanner: every match of the day that has not started → best bets
+  const scanCfg = Object.assign({ depth: 'auto', scope: null, bank: 300, profile: 'bal', minEdge: 3 }, cfg.scan || {});
+  scanCfg.en = Object.assign({ goals: true, cards: true, corners: true, combos: true, parlay: true }, scanCfg.en || {});
+  const sc = { open: false, view: 'setup', busy: false, cancel: false, recs: null, out: null, at: 0, depth: null, day: null, err: null };
+  const saveScanCfg = () => { cfg.scan = scanCfg; save('lbd_sim', cfg); };
+  const usd = (x) => '$' + Math.round(x).toLocaleString('en-US');
+  const SEC_PER = { light: 6, normal: 10, deep: 18 };
+  const DEPTH_NAME = { light: 'Ελαφρύ', normal: 'Κανονικό', deep: 'Βαθύ' };
+  function dayLabel(d) { const dt = new Date(d + 'T12:00:00Z'); return d === athensDay() ? 'σήμερα' : `${WD[dt.getUTCDay()]} ${dt.getUTCDate()}/${dt.getUTCMonth() + 1}`; }
+  const scanScope = () => scanCfg.scope || (cfg.filter === 'star' ? 'star' : cfg.filter === 'all' ? 'all' : 'big');
+  function scanCandidates() {
+    const tracked = new Set(LS('lbd_tracked', []));
+    const now = Date.now();
+    let list = (st.fixtures || []).filter((f) => ['NS', 'TBD'].includes((f.status || {}).short) && f.ts > now + 3 * 60000);
+    const scope = scanScope();
+    if (scope === 'big') { const b = list.filter((f) => BIG.has(f.league.id)); if (b.length) list = b; }
+    else if (scope === 'star') list = list.filter((f) => tracked.has(f.id));
+    return list.sort((a, b) => a.ts - b.ts);
+  }
+  function scanPlan() {
+    const cand = scanCandidates(), rem = D.state.remaining, per = (d) => D.estimate(d);
+    let depth = scanCfg.depth;
+    if (depth === 'auto') {
+      const n = Math.max(1, cand.length);
+      depth = rem == null ? (n <= 10 ? 'deep' : 'normal') : rem - 60 >= n * per('deep') ? 'deep' : rem - 60 >= n * per('normal') ? 'normal' : 'light';
+    }
+    const prio = (arr) => arr.slice().sort((a, b) => (BIG.has(b.league.id) ? 1 : 0) - (BIG.has(a.league.id) ? 1 : 0) || a.ts - b.ts);
+    let fixtures = cand.slice(), cut = 0;
+    if (rem != null) { const afford = Math.max(0, Math.floor((rem - 40) / per(depth))); if (afford < fixtures.length) { cut += fixtures.length - afford; fixtures = prio(fixtures).slice(0, afford); } }
+    if (fixtures.length > 30) { cut += fixtures.length - 30; fixtures = prio(fixtures).slice(0, 30); }
+    fixtures.sort((a, b) => a.ts - b.ts);
+    return { cand, fixtures, depth, cut, rem, calls: fixtures.length * per(depth), minutes: Math.max(1, Math.round(fixtures.length * SEC_PER[depth] / 2 / 60)) };
+  }
+  async function openScan() {
+    if (!D.hasKey()) return;
+    sc.open = true; sc.view = sc.out && !sc.busy ? 'res' : sc.busy ? 'run' : 'setup'; sc.err = null;
+    if (st.fixtures === null && !st.loadingDay) loadDay(false);
+    renderScan();
+    const box = $('#sxScan'); if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    await D.quota();
+    if (sc.open && sc.view === 'setup') renderScan();
+  }
+  function compileScan() {
+    const now = Date.now();
+    const live = (sc.recs || []).filter((r) => !(r.fix && r.fix.ts && r.fix.ts < now));
+    try {
+      sc.out = window.SimScan.compile(live, { minEdge: scanCfg.minEdge / 100, bankroll: scanCfg.bank, profile: scanCfg.profile, en: scanCfg.en });
+      sc.out.started = (sc.recs || []).length - live.length;
+    } catch (e) { sc.out = null; sc.err = 'Σφάλμα υπολογισμού: ' + e.message; }
+  }
+  async function runScan() {
+    if (sc.busy) return;
+    if (!D.hasKey()) { sc.err = 'Βάλε πρώτα το κλειδί API-Football.'; renderScan(); return; }
+    await D.quota();
+    const plan = scanPlan();
+    if (!plan.fixtures.length) { sc.err = 'Δεν υπάρχουν αγώνες για σάρωση με αυτές τις ρυθμίσεις (όσοι δεν έχουν ξεκινήσει).'; renderScan(); return; }
+    sc.err = null; sc.busy = true; sc.cancel = false; sc.view = 'run'; sc.depth = plan.depth; sc.day = st.day;
+    sc.recs = plan.fixtures.map((f) => ({ fix: { id: f.id, ts: f.ts, league: { id: f.league.id, name: f.league.name, country: f.league.country }, home: { name: f.home.name }, away: { name: f.away.name } }, status: 'wait' }));
+    renderScan();
+    const o = { depth: plan.depth, nSim: Math.min(cfg.nSim, 15000), blendW: cfg.blendW / 100 };
+    let recs;
+    try {
+      recs = await window.SimScan.run(plan.fixtures, o, { onUpdate: (i, rec) => { sc.recs[i] = rec; updateScanProgress(); }, cancelled: () => sc.cancel });
+    } catch (e) { sc.busy = false; sc.err = 'Η σάρωση απέτυχε: ' + (e.message || e); sc.view = 'setup'; renderScan(); return; }
+    sc.recs = recs; sc.busy = false; sc.at = Date.now();
+    compileScan(); persistScan();
+    sc.view = 'res'; renderScan();
+  }
+  function persistScan() {
+    try {
+      const slimRecs = (sc.recs || []).map((r) => ({ fix: r.fix, status: r.status, note: r.note, noOdds: r.noOdds, completeness: r.completeness, lineups: r.lineups, nBooks: r.nBooks, depth: r.depth, hasCorners: r.hasCorners, hasCards: r.hasCards, referee: r.referee, sum: r.sum, rows: (r.rows || []).filter((x) => x.eligible), builders: r.builders }));
+      localStorage.setItem('lbd_scan', JSON.stringify({ day: sc.day, at: sc.at, depth: sc.depth, recs: slimRecs }));
+    } catch {}
+  }
+  function restoreScan() {
+    const o = LS('lbd_scan', null);
+    if (!o || !Array.isArray(o.recs) || !o.at || Date.now() - o.at > 14 * 3600000) return;
+    sc.recs = o.recs; sc.at = o.at; sc.depth = o.depth; sc.day = o.day;
+    compileScan();
+  }
+
+  function scanControlsHtml() {
+    const P = window.SimScan.PROFILES, en = scanCfg.en;
+    const chk = (k, t) => `<label class="sx-chk"><input type="checkbox" data-sx="scen" data-k="${k}"${en[k] ? ' checked' : ''}> ${t}</label>`;
+    return `<div class="sc-opts">
+        <label>Ποσό προς μοίρασμα ($)<input type="number" id="scBank" min="10" step="10" value="${scanCfg.bank}"></label>
+        <label>Προφίλ μοιράσματος<select id="scProf">${Object.entries(P).map(([k, v]) => `<option value="${k}"${scanCfg.profile === k ? ' selected' : ''}>${v.name} — μονά ${Math.round(v.single * 100)}% · παρολί ${Math.round(v.parlay * 100)}% · builder ${Math.round(v.builder * 100)}%</option>`).join('')}</select></label>
+        <label>Ελάχιστο edge (%)<input type="number" id="scEdge" min="0" max="20" step="0.5" value="${scanCfg.minEdge}"></label>
+      </div>
+      <div class="sc-chks">${chk('goals', 'Γκολ &amp; αποτέλεσμα')}${chk('cards', 'Κάρτες')}${chk('corners', 'Κόρνερ')}${chk('combos', 'Συνδυαστικά &amp; bet builder')}${chk('parlay', 'Παρολί 3 αγώνων')}</div>`;
+  }
+  function scanSetupHtml() {
+    const pl = scanPlan();
+    const sel = (id, cur, opts) => `<select id="${id}">${opts.map(([v, t]) => `<option value="${v}"${cur === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
+    let h = `<p class="note" style="margin-top:0">Τρέχει την προσομοίωση σε ΟΛΟΥΣ τους αγώνες (${dayLabel(st.day)}) που δεν έχουν ξεκινήσει, φέρνει ενδεκάδες &amp; αποδόσεις και διαλέγει μονά, παρολί 3 αγώνων και bet builder που έχουν αξία, με το ποσό χωρισμένο στα δολάρια που ορίζεις. Δεν στοιχηματίζει τίποτα· οι προτάσεις είναι στατιστική εκτίμηση.</p>
+      <div class="sc-opts">
+        <label>Αγώνες${sel('scScope', scanScope(), [['big', 'Μεγάλες λίγκες'], ['all', 'Όλες οι λίγκες'], ['star', '★ Αγαπημένα']])}</label>
+        <label>Βάθος δεδομένων${sel('scDepth', scanCfg.depth, [['auto', 'Αυτόματο (ανάλογα με τις κλήσεις που έμειναν)'], ['light', 'Ελαφρύ (~8 κλήσεις/αγώνα) — μόνο γκολ'], ['normal', 'Κανονικό (~18) — γκολ + κάρτες'], ['deep', 'Βαθύ (~44) — γκολ + κάρτες + κόρνερ']])}</label>
+      </div>${scanControlsHtml()}`;
+    h += `<div class="sc-est"><b>${pl.fixtures.length}</b> από ${pl.cand.length} αγώνες που δεν έχουν ξεκινήσει · βάθος <b>${DEPTH_NAME[pl.depth]}</b> · ~${pl.calls} κλήσεις API${pl.rem != null ? ` (έμειναν ${pl.rem} σήμερα)` : ''} · περίπου ${pl.minutes} λεπτ${pl.minutes === 1 ? 'ό' : 'ά'}.
+      ${pl.cut ? `<div class="neg">⚠ ${pl.cut} αγώνες δεν χωράνε στο όριο κλήσεων / 30 αγώνων — προτεραιότητα έχουν οι μεγάλες λίγκες.</div>` : ''}
+      <div class="muted sx-small">${pl.depth === 'light' ? 'Στο ελαφρύ βάθος δεν υπάρχουν στατιστικά καρτών/κόρνερ, οπότε προτείνονται μόνο γκολ &amp; αποτέλεσμα.' : pl.depth === 'normal' ? 'Κάρτες: ναι (στατιστικά σεζόν). Κόρνερ: όχι — χρειάζονται Βαθύ βάθος.' : 'Κάρτες &amp; κόρνερ: ναι. Στα κόρνερ/κάρτες το μοντέλο δεν συγκρίνεται με την αγορά όπως στα γκολ, για αυτό ζητάω μεγαλύτερο περιθώριο ασφαλείας.'}</div></div>`;
+    if (sc.err) h += `<p class="neg">${esc(sc.err)}</p>`;
+    h += `<div class="sx-btns"><button class="primary" data-sx="scanstart"${pl.fixtures.length ? '' : ' disabled'}>▶ Ξεκίνα τη σάρωση</button>${sc.out ? '<button data-sx="scanres">Δες τα τελευταία αποτελέσματα</button>' : ''}<button data-sx="scanclose">Κλείσιμο</button></div>`;
+    return h;
+  }
+  function scanListHtml() {
+    const ic = { wait: '⏸', run: '⏳', ok: '✅', skip: '➖', err: '⚠️' };
+    return (sc.recs || []).map((r) => {
+      const note = r.status === 'ok' ? (r.noOdds ? 'χωρίς αποδόσεις ακόμα' : `${(r.rows || []).filter((x) => x.eligible && x.ev >= scanCfg.minEdge / 100 && x.evCons > 0).length} υποψήφια value`) : r.note || '';
+      return `<div class="sx-task ${r.status === 'err' ? 'fail' : r.status === 'skip' ? 'skip' : ''}"><span>${ic[r.status] || ''}</span><span>${hhmm(r.fix.ts)} ${esc(r.fix.home.name)} – ${esc(r.fix.away.name)}</span><span class="muted">${esc(note)}</span></div>`;
+    }).join('');
+  }
+  function updateScanProgress() {
+    const recs = sc.recs || [], done = recs.filter((r) => r.status !== 'wait' && r.status !== 'run').length;
+    const bar = $('#scProg'), txt = $('#scProgTxt'), list = $('#scList');
+    if (bar) bar.style.width = (recs.length ? (done / recs.length) * 100 : 0).toFixed(0) + '%';
+    if (txt) txt.textContent = `${done}/${recs.length} αγώνες ολοκληρώθηκαν · βάθος ${DEPTH_NAME[sc.depth] || ''}`;
+    if (list) list.innerHTML = scanListHtml();
+  }
+  function scanRunHtml() {
+    return `<div class="sx-pbar"><i id="scProg" style="width:0%"></i></div><p class="note" id="scProgTxt"></p><div id="scList">${scanListHtml()}</div>
+      <div class="sx-btns"><button data-sx="scanstop">⏹ Διακοπή (κρατάω όσους αγώνες έχουν τελειώσει)</button></div>
+      <p class="note">Κάθε αγώνας: φόρτωση δεδομένων → ${(Math.min(cfg.nSim, 15000)).toLocaleString('el-GR')} εικονικοί αγώνες → έλεγχος κάθε αγοράς με απόδοση. Μην κλείσεις τη σελίδα μέχρι να τελειώσει.</p>`;
+  }
+
+  const grpTag = (g) => (g === 'corners' ? '<span class="tag mid">κόρνερ</span>' : g === 'cards' ? '<span class="tag mid">κάρτες</span>' : g === 'combo' ? '<span class="tag high">συνδυασμός αγοράς</span>' : '');
+  const luTag = (b) => (b ? '<span class="tag high">ενδεκάδες ✓</span>' : '<span class="tag low">ενδεκάδες ⏳</span>');
+  const signed = (x) => (x >= 0 ? '+' : '−') + Math.abs(x * 100).toFixed(1) + '%';
+  function betSingle(it) {
+    const r = it.ref;
+    return `<div class="sc-bet"><div class="hd"><b>${esc(r.match)}</b><span class="sc-stake">${usd(it.stake)}</span></div>
+      <div class="big">${esc(r.label)} @ ${od(r.price)} ${grpTag(r.group)}</div>
+      <div class="m">${hhmm(r.ts)} · ${esc(r.league)} · μοντέλο <b>${pc(r.p)}</b> · δίκαιη ${od(r.fair)} · edge <b class="pos">${signed(r.ev)}</b> <span class="muted">(συντηρητικά ${signed(r.evCons)})</span></div>
+      <div class="m">Παίξε μόνο αν η απόδοση είναι ≥ <b>${od(Math.max(r.minOdds, 1.3))}</b>${r.bestOdds > r.price + 0.005 ? ` · καλύτερη στην αγορά ${od(r.bestOdds)} (${esc(r.book)})` : ''} · αν κερδίσει ≈ <b>${usd(it.stake * r.price)}</b> ${luTag(r.lineups)}${r.group === 'corners' || r.group === 'cards' ? ' <span class="muted">· μόνο από το μοντέλο, μικρότερη βεβαιότητα</span>' : ''}</div>
+      <button class="mini" data-sx="scanpick" data-id="${r.mid}">Ανάλυση αγώνα ▶</button></div>`;
+  }
+  function betParlay(it) {
+    const r = it.ref;
+    return `<div class="sc-bet par"><div class="hd"><b>Παρολί 3 αγώνων @ ${od(r.odds)}</b><span class="sc-stake">${usd(it.stake)}</span></div>
+      ${r.legs.map((l) => `<div class="sc-leg"><span class="muted">${hhmm(l.ts)} ${esc(l.match)}</span><b>${esc(l.label)} ${grpTag(l.group)}</b><span>@ ${od(l.price)} · ${pc(l.p)} ${luTag(l.lineups)}</span></div>`).join('')}
+      <div class="m">Πιθανότητα να περάσουν και τα 3 (μοντέλο) <b>${pc(r.p, 1)}</b> · edge <b class="pos">${signed(r.ev)}</b> <span class="muted">(συντηρητικά ${signed(r.evCons)})</span> · αν κερδίσει ≈ <b>${usd(it.stake * r.odds)}</b></div>
+      <div class="m muted">Κάθε σκέλος ≥ 1.40 ✓ · 3 διαφορετικοί αγώνες ✓ · παίξε το μόνο αν κάθε σκέλος έχει ≥ την απόδοση που φαίνεται.</div></div>`;
+  }
+  function betBuilder(it) {
+    const r = it.ref;
+    if (it.kind === 'real') {
+      return `<div class="sc-bet bb"><div class="hd"><b>${esc(r.match)}</b><span class="sc-stake">${usd(it.stake)}</span></div>
+        <div class="big">${esc(r.label)} @ ${od(r.price)} ${grpTag('combo')}</div>
+        <div class="m">${hhmm(r.ts)} · ${esc(r.league)} · μοντέλο <b>${pc(r.p)}</b> · δίκαιη ${od(r.fair)} · edge <b class="pos">${signed(r.ev)}</b> <span class="muted">(συντηρητικά ${signed(r.evCons)})</span></div>
+        <div class="m">Έτοιμη αγορά με τιμή από bookmakers. Παίξε μόνο αν ≥ <b>${od(Math.max(r.minOdds, 1.3))}</b> · αν κερδίσει ≈ <b>${usd(it.stake * r.price)}</b> ${luTag(r.lineups)}</div>
+        <button class="mini" data-sx="scanpick" data-id="${r.mid}">Ανάλυση αγώνα ▶</button></div>`;
+    }
+    return `<div class="sc-bet bb"><div class="hd"><b>${esc(r.match)} · bet builder</b><span class="sc-stake">${usd(it.stake)}</span></div>
+      ${r.legs.map((l) => `<div class="sc-leg"><span></span><b>${esc(l.label)}</b><span>@ ${od(l.price)} · ${pc(l.p)}</span></div>`).join('')}
+      <div class="m">${hhmm(r.ts)} · ${esc(r.league)} · πιθανότητα όλων μαζί (με τη συσχέτιση) <b>${pc(r.p, 1)}</b> · δίκαιη απόδοση ${od(r.fair)}</div>
+      <div class="m">Φτιάξ' το στο bet builder του Betpanda και <b>παίξ' το μόνο αν δίνει ≥ ${od(r.minOdds)}</b>. Υπόθεση για την τιμή του: ~${od(r.price)} (το γινόμενο των αποδόσεων είναι ${od(r.naive)}, αλλά οι builders πληρώνουν λιγότερο στα συσχετισμένα σκέλη). Αν ≥ ${od(r.minOdds)} → αξίζει, αλλιώς παράλειψέ το. ${luTag(r.lineups)}</div>
+      <button class="mini" data-sx="scanpick" data-id="${r.mid}">Ανάλυση αγώνα ▶</button></div>`;
+  }
+  function scanResultHtml() {
+    const o = sc.out;
+    if (!o) return `<p class="neg">${esc(sc.err || 'Δεν υπάρχουν αποτελέσματα.')}</p>`;
+    const done = (sc.recs || []).filter((r) => r.status === 'ok').length;
+    let h = `<p class="note" style="margin-top:0">${sc.day ? 'Αγώνες ' + dayLabel(sc.day) + ' · ' : ''}σαρώθηκαν <b>${done}</b>${o.counts.noOdds ? ` (οι ${o.counts.noOdds} χωρίς αποδόσεις ακόμα)` : ''}${o.counts.skipped ? ` · ${o.counts.skipped} δεν σαρώθηκαν` : ''}${o.started ? ` · ${o.started} ξεκίνησαν στο μεταξύ και αφαιρέθηκαν` : ''} · βάθος ${DEPTH_NAME[sc.depth] || '—'} · ${ago(sc.at)}. Οι τιμές είναι από API-Football (μέση τιμή bookmakers), όχι απαραίτητα του Betpanda — έλεγξε την τιμή στο Betpanda πριν παίξεις.</p>`;
+    h += `<details class="sx-det"><summary><b>⚙ Ποσό, προφίλ &amp; φίλτρα</b> <span class="muted">(αλλάζουν αμέσως, χωρίς νέα σάρωση)</span></summary>${scanControlsHtml()}</details>`;
+    const plan = o.plan;
+    h += `<h2 style="margin-top:12px">Πλάνο μοιράσματος · ${usd(o.bankroll)}</h2>`;
+    if (!plan.length) {
+      h += `<p class="muted">Δεν βρέθηκε αρκετά στοιχήματα με αξία (edge ≥ ${scanCfg.minEdge}% μετά το περιθώριο ασφαλείας, απόδοση ≥ 1.30) για να χωριστεί το ποσό. Αυτή είναι απάντηση: δεν έχει κάθε ημέρα value. Μπορείς να χαμηλώσεις το «Ελάχιστο edge» ή να ξανατρέξεις όταν βγουν οι ενδεκάδες.</p>`;
+    } else {
+      const total = plan.reduce((s, x) => s + x.stake, 0);
+      h += `<div class="sx-kv"><div><span>Σύνολο στοιχημάτων</span><b>${usd(total)} σε ${plan.length}</b></div><div><span>Αναμενόμενο κέρδος (μοντέλο, συντηρητικά)</span><b class="${o.stats.evCons >= 0 ? 'pos' : 'neg'}">${o.stats.evCons >= 0 ? '+' : '−'}${usd(Math.abs(o.stats.evCons))}</b></div><div><span>Μεγαλύτερο ποσό σε ένα στοίχημα</span><b>${usd(o.stats.top)}</b></div></div>`;
+      if (o.stats.top > 0.4 * o.bankroll) h += `<p class="neg sx-small">⚠ Πάνω από το 40% του ποσού πάει σε ένα στοίχημα επειδή υπάρχουν λίγες προτάσεις με value. Αν θες πιο ισορροπημένο, χαμήλωσε το «Ελάχιστο edge».</p>`;
+      for (const [bk, title, fn] of [['single', 'Μονά', betSingle], ['parlay', 'Παρολί', betParlay], ['builder', 'Bet builder (ίδιος αγώνας)', betBuilder]]) {
+        const g = plan.filter((x) => x.bucket === bk);
+        if (!g.length) continue;
+        h += `<h2 style="margin-top:12px">${title} · ${usd(g.reduce((s, x) => s + x.stake, 0))}</h2>` + g.map(fn).join('');
+      }
+    }
+    const inPlan = new Set(plan.filter((x) => x.bucket === 'single').map((x) => x.ref.mid + '|' + x.ref.key));
+    const rest = o.singles.filter((s) => !inPlan.has(s.mid + '|' + s.key));
+    if (rest.length) h += `<details class="sx-det"><summary><b>Άλλα μονά με value εκτός πλάνου</b> <span class="muted">(${rest.length})</span></summary>${rest.map((s) => `<div class="pick value"><div class="m"><b>${esc(s.match)}</b> · ${hhmm(s.ts)} ${grpTag(s.group)} ${s.lowData ? '<span class="tag low">χαμηλά δεδομένα</span>' : ''}</div><div class="big">${esc(s.label)} @ ${od(s.price)}</div><div class="m">μοντέλο ${pc(s.p)} · δίκαιη ${od(s.fair)} · edge ${signed(s.ev)} (συντηρητικά ${signed(s.evCons)}) · παίξε αν ≥ ${od(Math.max(s.minOdds, 1.3))}</div></div>`).join('')}</details>`;
+    if (o.suspicious.length) h += `<details class="sx-det"><summary><b>⚠ Ύποπτα value (πολύ μεγάλο edge)</b> <span class="muted">(${o.suspicious.length}) — δεν μπαίνουν στο πλάνο</span></summary>${o.suspicious.slice(0, 12).map((s) => `<div class="pick"><div class="m"><b>${esc(s.match)}</b> · ${esc(s.label)} @ ${od(s.price)} · μοντέλο ${pc(s.p)} · edge ${signed(s.ev)}</div></div>`).join('')}<p class="note">Edge τέτοιου μεγέθους συνήθως σημαίνει ότι το μοντέλο δεν ξέρει κάτι (τραυματίας, αλλαγή ενδεκάδας, παλιά τιμή) και όχι ότι η αγορά έκανε λάθος. Έλεγξε νέα/ενδεκάδα στην ανάλυση αγώνα.</p></details>`;
+    // overview of all scanned matches
+    const rows = (sc.recs || []);
+    h += `<details class="sx-det"><summary><b>Όλοι οι αγώνες της σάρωσης</b> <span class="muted">(${rows.length})</span></summary><div class="sx-scroll"><table class="sx-tbl"><thead><tr><th>Ώρα</th><th>Αγώνας</th><th>1/Χ/2</th><th>O2.5</th><th>GG</th><th>Κόρν.</th><th>Κάρτ.</th><th></th></tr></thead><tbody>${rows.map((r) => {
+      if (r.status !== 'ok') return `<tr><td>${hhmm(r.fix.ts)}</td><td>${esc(r.fix.home.name)} – ${esc(r.fix.away.name)}</td><td colspan="6" class="muted">${esc(r.note || 'δεν σαρώθηκε')}</td></tr>`;
+      const s = r.sum, [cl, cc] = window.SimBuild.completenessLabel(r.completeness);
+      return `<tr><td>${hhmm(r.fix.ts)}</td><td>${esc(r.fix.home.name)} – ${esc(r.fix.away.name)}<div class="muted sx-small">${esc(r.fix.league.name)} · <span class="tag ${cc}">${cl}</span> ${r.lineups ? '· ενδεκάδες ✓' : ''}${r.noOdds ? ' · <span class="neg">χωρίς αποδόσεις</span>' : ''}</div></td><td>${pc(s.p1)}/${pc(s.pX)}/${pc(s.p2)}</td><td>${pc(s.o25)}</td><td>${pc(s.gg)}</td><td>${s.corners.toFixed(1)}${r.hasCorners ? '' : '*'}</td><td>${s.cards.toFixed(1)}${r.hasCards ? '' : '*'}</td><td><button class="mini" data-sx="scanpick" data-id="${r.fix.id}">▶</button></td></tr>`;
+    }).join('')}</tbody></table></div><p class="note">* χωρίς στατιστικά ομάδων — μέσος όρος λίγκας, δεν προτείνεται αγορά κόρνερ/καρτών.</p></details>`;
+    h += `<div class="sx-btns"><button class="primary" data-sx="scanstart">↻ Νέα σάρωση (ενδεκάδες &amp; αποδόσεις)</button><button data-sx="scansetup">Ρυθμίσεις σάρωσης</button><button data-sx="scanclose">Κλείσιμο</button></div>
+      <p class="note">Στατιστική εκτίμηση, όχι εγγύηση κέρδους και όχι χρηματοοικονομική συμβουλή. Το «edge» είναι η διαφορά του μοντέλου από την τιμή· στα κόρνερ/κάρτες το μοντέλο δεν ανακατεύεται με την αγορά, για αυτό είναι πιο αβέβαιο. Οι ενδεκάδες βγαίνουν περίπου 60' πριν τη σέντρα — ξανατρέξε τότε. Παίξε μόνο ό,τι αντέχεις να χάσεις.</p>`;
+    return h;
+  }
+  let scanT = null;
+  const scheduleScan = () => { clearTimeout(scanT); scanT = setTimeout(renderScan, 0); };
+  function renderScan() {
+    clearTimeout(scanT);
+    const box = $('#sxScan');
+    if (!box) return;
+    if (!sc.open) { box.innerHTML = ''; return; }
+    const body = sc.view === 'run' ? scanRunHtml() : sc.view === 'res' ? scanResultHtml() : scanSetupHtml();
+    box.innerHTML = `<section class="card sc-box"><h2>🔎 Σάρωση ημέρας · καλύτερα στοιχήματα με value</h2>${body}</section>`;
+    if (sc.view === 'run') updateScanProgress();
+  }
+
   // ------------------------------------------------ events
   function onClick(e) {
     const b = e.target.closest('[data-sx]');
@@ -2478,6 +3103,13 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const a = b.dataset.sx;
     if (a === 'day') { st.day = b.dataset.d; loadDay(false); }
     else if (a === 'reload') loadDay(true);
+    else if (a === 'scanopen') openScan();
+    else if (a === 'scanclose') { sc.open = false; renderScan(); }
+    else if (a === 'scanstart') runScan();
+    else if (a === 'scanstop') { sc.cancel = true; b.disabled = true; b.textContent = 'Σταματάω μετά τον τρέχοντα αγώνα…'; }
+    else if (a === 'scansetup') { sc.view = 'setup'; sc.err = null; renderScan(); }
+    else if (a === 'scanres') { sc.view = 'res'; renderScan(); }
+    else if (a === 'scanpick') pick(Number(b.dataset.id));
     else if (a === 'filter') { cfg.filter = b.dataset.f; save('lbd_sim', cfg); renderSchedule(); }
     else if (a === 'pick') pick(Number(b.dataset.id));
     else if (a === 'tab') { st.tab = b.dataset.t; refreshTab(); }
@@ -2520,6 +3152,12 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     else if (t.id === 'cfgBank') { cfg.bankroll = Math.max(0, Number(t.value) || 0); save('lbd_sim', cfg); if (st.R) refreshTab(); }
     else if (t.id === 'cfgEdge') { cfg.minEdge = Math.max(0, Number(t.value) || 0); save('lbd_sim', cfg); if (st.R) refreshTab(); }
     else if (t.id === 'cfgBlend') { cfg.blendW = Number(t.value); save('lbd_sim', cfg); if (st.ctx) scheduleRecompute(); }
+    else if (t.id === 'scScope') { scanCfg.scope = t.value; saveScanCfg(); scheduleScan(); }
+    else if (t.id === 'scDepth') { scanCfg.depth = t.value; saveScanCfg(); scheduleScan(); }
+    else if (t.id === 'scBank') { scanCfg.bank = Math.max(10, Math.round(Number(t.value) || 300)); saveScanCfg(); if (sc.out) compileScan(); scheduleScan(); }
+    else if (t.id === 'scProf') { scanCfg.profile = t.value; saveScanCfg(); if (sc.out) compileScan(); scheduleScan(); }
+    else if (t.id === 'scEdge') { scanCfg.minEdge = Math.max(0, Number(t.value) || 0); saveScanCfg(); if (sc.out) compileScan(); scheduleScan(); }
+    else if (t.dataset && t.dataset.sx === 'scen') { scanCfg.en[t.dataset.k] = t.checked; saveScanCfg(); if (sc.out) compileScan(); scheduleScan(); }
     else if (t.id === 'sxDate') { if (t.value) { st.day = t.value; loadDay(false); } }
     else if (t.id === 'sxOnlyOdds') { st.onlyOdds = t.checked; refreshTab(); }
     else if (t.dataset && t.dataset.sx === 'fac') { st.adj.disabled[t.dataset.id] = !t.checked; scheduleRecompute(); }
@@ -2534,17 +3172,19 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
   }
 
   // ------------------------------------------------ mount
-  let mounted = false;
+  let mounted = false, mountedScan = false;
   function mount() {
     const v = $('#viewSim');
     if (!v) return;
     if (!mounted) {
-      v.innerHTML = '<section class="card" id="sxIntro"></section><section class="card" id="sxCtl"></section><section class="card"><h2>Πρόγραμμα αγώνων</h2><div id="sxSched"></div></section><div id="sxMatch"></div>';
+      v.innerHTML = '<section class="card" id="sxIntro"></section><section class="card" id="sxCtl"></section><section class="card"><h2>Πρόγραμμα αγώνων</h2><div id="sxSched"></div></section><div id="sxScan"></div><div id="sxMatch"></div>';
       v.addEventListener('click', onClick); v.addEventListener('change', onChange); v.addEventListener('input', onInput);
       mounted = true;
     }
     renderIntro();
     renderControls();
+    if (!mountedScan) { mountedScan = true; restoreScan(); }
+    renderScan();
     if (st.fixtures === null && !st.loadingDay && D.hasKey()) loadDay(false); else renderSchedule();
     renderMatch();
   }
