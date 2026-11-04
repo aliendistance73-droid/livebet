@@ -193,6 +193,10 @@ button.mini { padding: 3px 8px; font-size: 12px; border-radius: 6px; } button.mi
 .sc-leg span:first-child { font-size: 12px; } .sc-leg span:last-child { text-align: right; white-space: nowrap; font-size: 12px; color: var(--muted); }
 @media (max-width: 520px) { .sc-leg { grid-template-columns: minmax(0, 1fr) auto; } .sc-leg span:first-child { grid-column: 1 / -1; } }
 
+.sx-lowdata { margin-top: 8px; padding: 8px 10px; border-left: 3px solid var(--amber); background: rgba(224, 160, 48, 0.08); border-radius: 6px; font-size: 13px; }
+.sx-lowdata ul { margin: 4px 0 0; padding-left: 18px; }
+.sx-lowdata li { margin: 2px 0; }
+
 header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidden] { display: block; }
 </style>
 </head>
@@ -1137,9 +1141,27 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
       matches = matches.concat(extra);
       crossLeague = true;
     }
-    const ratings = S.fitRatings(matches, { now: Math.min(Date.now(), kick), halfLife: opts.halfLife });
-    if (!ratings || !ratings.teams[hid] || !ratings.teams[aid]) return { error: 'Δεν βρέθηκαν αρκετά αποτελέσματα για να εκτιμηθεί η δύναμη των ομάδων (νέα ομάδα ή πολύ αρχή σεζόν;).' };
+    let ratings = S.fitRatings(matches, { now: Math.min(Date.now(), kick), halfLife: opts.halfLife });
+
+    /* A match is NEVER refused for lack of data. Whatever is missing is replaced by the next best signal and the result is
+       tagged as low-reliability:  full results of both teams → thin (few results) → blind (a team has no results at all:
+       it is rated "average" and the bookmaker market / API-Football prediction / standings carry the estimate). */
+    const lowData = [];
+    const failedTasks = (ctx.tasks || []).filter((t) => t.status === 'fail');
+    if (!ratings) {
+      // no usable result at all → league-average priors (a typical European match)
+      ratings = { muH: 1.45, muA: 1.15, ht1: 0.45, avgGoals: 2.6, nMatches: 0, teams: {}, halfLife: opts.halfLife, now: Math.min(Date.now(), kick) };
+      ratings.predict = (h, a, opt) => S.predictLambdas(ratings, h, a, opt);
+    }
+    const neutralTeam = () => ({ att: 1, def: 1, n: 0, nEff: 0, gfpg: 0, gapg: 0, homeFor: 1, homeAg: 1, awayFor: 1, awayAg: 1, ht1: ratings.ht1, last: 0, noData: true });
+    for (const t of [fx.home, fx.away]) {
+      if (!ratings.teams[t.id]) { ratings.teams[t.id] = neutralTeam(); lowData.push(`${t.name}: δεν βρέθηκε κανένας πρόσφατος αγώνας — θεωρείται «μέση» ομάδα και η εκτίμηση στηρίζεται στις υπόλοιπες πηγές`); }
+    }
+    for (const t of failedTasks) if (/^team[HA]$|^league$/.test(t.id)) lowData.push(`Αποτυχία φόρτωσης «${t.label}»: ${t.note}`);
     const th = ratings.teams[hid], ta = ratings.teams[aid];
+    const nEffMin0 = Math.min(th.nEff, ta.nEff);
+    const dataMode = (th.noData || ta.noData || nEffMin0 < 0.5) ? 'blind' : nEffMin0 < 4 ? 'thin' : 'full';
+    if (dataMode === 'thin') lowData.push(`Λίγα πρόσφατα αποτελέσματα (≈${nEffMin0.toFixed(1)} ισοδύναμοι αγώνες για την πιο άπειρη ομάδα) — η αγορά παίρνει μεγαλύτερο βάρος`);
     const base = S.predictLambdas(ratings, hid, aid, { neutral: opts.neutral });
     // keep the raw strength estimate in a believable range; teams from different leagues are only comparable
     // relative to their own league average, so that comparison is pulled towards an average match
@@ -1155,8 +1177,18 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     };
 
     // ---- 2. factors
-    addF({ id: 'strength', group: 'base', label: 'Δύναμη ομάδων (από αποτελέσματα λίγκας)', effH: 1, effA: 1, locked: true, conf: clamp((Math.min(th.nEff, ta.nEff)) / 10, 0.2, 1),
-      detail: `${fx.home.name}: επίθεση ${th.att.toFixed(2)} · άμυνα ${th.def.toFixed(2)} (${th.n} αγώνες) · ${fx.away.name}: επίθεση ${ta.att.toFixed(2)} · άμυνα ${ta.def.toFixed(2)} (${ta.n} αγώνες). Οι πρόσφατοι αγώνες μετράνε περισσότερο (ημιζωή ${opts.halfLife} ημέρες).${crossLeague ? ' Διαφορετικές λίγκες/κύπελλο: η σύγκριση είναι πιο αβέβαιη.' : ''}` });
+    addF({ id: 'strength', group: 'base', label: dataMode === 'full' ? 'Δύναμη ομάδων (από αποτελέσματα λίγκας)' : 'Δύναμη ομάδων (περιορισμένα δεδομένα)', effH: 1, effA: 1, locked: true, conf: clamp((Math.min(th.nEff, ta.nEff)) / 10, 0.2, 1),
+      detail: `${fx.home.name}: ${th.noData ? 'χωρίς αποτελέσματα — μέση ομάδα' : `επίθεση ${th.att.toFixed(2)} · άμυνα ${th.def.toFixed(2)} (${th.n} αγώνες)`} · ${fx.away.name}: ${ta.noData ? 'χωρίς αποτελέσματα — μέση ομάδα' : `επίθεση ${ta.att.toFixed(2)} · άμυνα ${ta.def.toFixed(2)} (${ta.n} αγώνες)`}. Οι πρόσφατοι αγώνες μετράνε περισσότερο (ημιζωή ${opts.halfLife} ημέρες).${crossLeague ? ' Διαφορετικές λίγκες/κύπελλο: η σύγκριση είναι πιο αβέβαιη.' : ''}${dataMode !== 'full' ? ' Επειδή τα δεδομένα είναι λίγα, η αγορά/βαθμολογία/πρόβλεψη API καθορίζουν μεγαλύτερο μέρος της εκτίμησης.' : ''}` });
+
+    // standings: only used when the results alone are thin (in a full-data match it would double count the same results)
+    const sdg = ctx.standings;
+    if (dataMode !== 'full' && sdg && sdg.home && sdg.away && sdg.home.played > 0 && sdg.away.played > 0) {
+      const sc = (r) => { const k = r.played / (r.played + 4); return k * (0.35 * (r.pts / r.played - 1.4) + 0.45 * (r.gd / r.played)); };
+      const d = clamp(sc(sdg.home) - sc(sdg.away), -1.2, 1.2);
+      const e = Math.exp(0.15 * d);
+      addF({ id: 'standings', group: 'context', label: 'Βαθμολογία διοργάνωσης', effH: e, effA: 1 / e, conf: 0.3,
+        detail: `${fx.home.name}: ${sdg.home.rank}η θέση, ${sdg.home.pts} β., διαφορά τερμάτων ${sdg.home.gd >= 0 ? '+' : ''}${sdg.home.gd} σε ${sdg.home.played} αγώνες · ${fx.away.name}: ${sdg.away.rank}η, ${sdg.away.pts} β., ${sdg.away.gd >= 0 ? '+' : ''}${sdg.away.gd} σε ${sdg.away.played}. Χρησιμοποιείται επειδή λείπουν αποτελέσματα· μικρή διόρθωση.` });
+    }
     const ha = ratings.muH / ratings.muA;
     addF({ id: 'venue', group: 'base', label: opts.neutral ? 'Ουδέτερο γήπεδο (χωρίς πλεονέκτημα έδρας)' : 'Έδρα', effH: 1, effA: 1, locked: true, conf: 0.8,
       detail: opts.neutral ? 'Αφαιρέθηκε το πλεονέκτημα έδρας.' : `Στη λίγκα οι γηπεδούχοι σκοράρουν ${(ratings.muH).toFixed(2)} και οι φιλοξενούμενοι ${(ratings.muA).toFixed(2)} γκολ (πλεονέκτημα ${pct(ha)}). Ειδικό στοιχείο ομάδων: ${fx.home.name} εντός ${pct(th.homeFor)} γκολ υπέρ / ${pct(th.homeAg)} κατά· ${fx.away.name} εκτός ${pct(ta.awayFor)} υπέρ / ${pct(ta.awayAg)} κατά (σχετικά με το γενικό επίπεδο).` });
@@ -1242,20 +1274,38 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
 
     // ---- 3. market blend (last)
     let blend = null;
-    const cons = ctx.odds && ctx.odds.consensus;
+    let cons = ctx.odds && ctx.odds.consensus;
+    let marketSrc = 'bookmakers';
+    // no bookmaker prices (yet) but the API-Football prediction exists → use it as a weaker "market" when the results are thin
+    const ap = ctx.apiPred;
+    if (!(cons && cons.ft) && dataMode !== 'full' && ap && ap.home >= 0 && ap.draw >= 0 && ap.away >= 0) {
+      const s = ap.home + ap.draw + ap.away;
+      if (s > 0.8 && s < 1.2) { cons = { ft: { '1': ap.home / s, X: ap.draw / s, '2': ap.away / s }, ou: {}, btts: null }; marketSrc = 'api'; }
+    }
     let w = opts.blendW;
-    if (crossLeague && w < 0.5 && opts.autoBlend !== false) w = Math.max(w, 0.5);
+    if (opts.autoBlend !== false) {
+      if (crossLeague && w < 0.5) w = 0.5;
+      // the thinner the team results, the more the estimate has to lean on the market
+      if (dataMode === 'blind') w = Math.max(w, marketSrc === 'api' ? 0.7 : 0.92);
+      else if (dataMode === 'thin') w = Math.max(w, marketSrc === 'api' ? 0.5 : 0.75);
+      else if (nEffMin0 < 6) w = Math.max(w, 0.6);
+    }
     if (cons && cons.ft && w > 0 && !off('market')) {
       blend = MK.blend(S, lh, la, cons, w);
+      blend.src = marketSrc;
       if (blend.applied) {
-        factors.push({ id: 'market', group: 'market', on: true, label: `Αγορά (bookmakers) · βάρος ${Math.round(w * 100)}%`, effH: blend.lh / lh, effA: blend.la / la, conf: 0.9,
-          detail: `Καθαρό μοντέλο 1/Χ/2: ${(blend.pure.h * 100).toFixed(0)}/${(blend.pure.d * 100).toFixed(0)}/${(blend.pure.a * 100).toFixed(0)} · αγορά (χωρίς περιθώριο): ${(blend.market.h * 100).toFixed(0)}/${(blend.market.d * 100).toFixed(0)}/${(blend.market.a * 100).toFixed(0)}${blend.market.o25 != null ? ` · Over 2.5: μοντέλο ${(blend.pure.o25 * 100).toFixed(0)}% / αγορά ${(blend.market.o25 * 100).toFixed(0)}%` : ''}. Οι αγορές είναι συνήθως πολύ ακριβείς, γι' αυτό η εκτίμηση μετακινείται προς αυτές.${crossLeague && w > opts.blendW ? ' Αυξήθηκε αυτόματα γιατί οι ομάδες δεν συγκρίνονται άμεσα.' : ''}` });
+        const srcName = marketSrc === 'api' ? 'Πρόβλεψη API-Football' : 'Αγορά (bookmakers)';
+        factors.push({ id: 'market', group: 'market', on: true, label: `${srcName} · βάρος ${Math.round(w * 100)}%`, effH: blend.lh / lh, effA: blend.la / la, conf: marketSrc === 'api' ? 0.5 : 0.9,
+          detail: `Καθαρό μοντέλο 1/Χ/2: ${(blend.pure.h * 100).toFixed(0)}/${(blend.pure.d * 100).toFixed(0)}/${(blend.pure.a * 100).toFixed(0)} · ${marketSrc === 'api' ? 'πρόβλεψη API-Football' : 'αγορά (χωρίς περιθώριο)'}: ${(blend.market.h * 100).toFixed(0)}/${(blend.market.d * 100).toFixed(0)}/${(blend.market.a * 100).toFixed(0)}${blend.market.o25 != null ? ` · Over 2.5: μοντέλο ${(blend.pure.o25 * 100).toFixed(0)}% / αγορά ${(blend.market.o25 * 100).toFixed(0)}%` : ''}. ${marketSrc === 'api' ? 'Δεν υπάρχουν ακόμα αποδόσεις, οπότε χρησιμοποιείται η πρόβλεψη του API ως δεύτερη πηγή.' : 'Οι αγορές είναι συνήθως πολύ ακριβείς, γι\' αυτό η εκτίμηση μετακινείται προς αυτές.'}${w > opts.blendW ? ` Το βάρος αυξήθηκε αυτόματα (${crossLeague ? 'διαφορετικές λίγκες/κύπελλο' : 'λίγα δεδομένα ομάδων'}${dataMode !== 'full' ? ', λίγα αποτελέσματα' : ''}).` : ''}` });
         lh = blend.lh; la = blend.la;
       }
     } else if (cons && cons.ft) {
       factors.push({ id: 'market', group: 'market', on: false, label: 'Αγορά (bookmakers)', effH: 1, effA: 1, conf: 0.9, detail: 'Απενεργοποιημένο: η προσομοίωση βασίζεται μόνο στο μοντέλο.' });
       blend = MK.blend(S, afterFactors.lh, afterFactors.la, cons, 0);
     }
+    const marketLed = !!(blend && blend.applied && w >= 0.6);
+    if (dataMode === 'blind' && !(blend && blend.applied)) lowData.push('Δεν υπάρχουν ούτε αποδόσεις ούτε πρόβλεψη API: η εκτίμηση βασίζεται μόνο σε μέσους όρους λίγκας (και βαθμολογία αν υπάρχει) — πολύ χαμηλή αξιοπιστία');
+    else if (dataMode !== 'full' && blend && blend.applied) lowData.push(marketSrc === 'api' ? 'Η εκτίμηση στηρίζεται κυρίως στην πρόβλεψη API-Football (δεν υπάρχουν αποδόσεις)' : `Η εκτίμηση στηρίζεται κυρίως στις αποδόσεις των bookmakers (βάρος ${Math.round(w * 100)}%): οι «αξίες» που βγαίνουν είναι περισσότερο διαφορές τιμής μεταξύ bookmakers παρά δικό μου πλεονέκτημα`);
 
     // ---- 4. corners / cards / penalties / half-time
     const cp = ctx.corners;
@@ -1287,8 +1337,10 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     // ---- 5. confidence
     const have = (x) => (x ? 1 : 0);
     const nEffMin = Math.min(th.nEff, ta.nEff);
-    const completeness = clamp(0.30 * clamp(nEffMin / 10, 0, 1) + 0.15 * have(ctx.lineups) + 0.08 * have(ctx.injuries) + 0.12 * have(cons && cons.ft) + 0.05 * have(refInfo) + 0.05 * have(ctx.weather)
+    let completeness = clamp(0.30 * clamp(nEffMin / 10, 0, 1) + 0.15 * have(ctx.lineups) + 0.08 * have(ctx.injuries) + 0.12 * have(cons && cons.ft) + 0.05 * have(refInfo) + 0.05 * have(ctx.weather)
       + 0.06 * have(ctx.recent) + 0.03 * have(ctx.h2h) + 0.08 * have(ctx.players) + 0.05 * have(cp) + 0.03 * have(ts) - (crossLeague ? 0.1 : 0), 0.05, 1);
+    // a market-led estimate for teams we know little about can never rate as better than "low / medium"
+    if (dataMode === 'blind') completeness = Math.min(completeness, 0.3); else if (dataMode === 'thin') completeness = Math.min(completeness, 0.55);
     const sigTeam = 0.07 + 0.08 * (1 - clamp(nEffMin / 14, 0, 1)) + (crossLeague ? 0.03 : 0);
     const sigTempo = 0.08;
     const params = {
@@ -1296,6 +1348,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     };
     return {
       params, factors, ratings, base, blend, crossLeague, completeness, absences: { home: abH, away: abA },
+      dataMode, lowData, marketLed, modelless: dataMode === 'blind' && !(blend && blend.applied),
       lambdas: { base: { lh: base.lh, la: base.la }, afterFactors, final: { lh, la } },
       unc: 0.015 + 0.035 * (1 - completeness), refInfo,
     };
@@ -1491,6 +1544,33 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const fresh = true;   // volatile data is always re-read right before the run
     const stable = (ttl) => ({ ttl, fresh: opts.force });
 
+    /* Recent results of one team across ALL competitions (the only data a cup / European tie can lean on).
+       First choice: its last 30 matches. If that comes back thin or fails (rate limit, odd response), fall back to the team's
+       whole current + previous season so that a match is never left without team data just because one call failed. */
+    const teamHistory = async (id) => {
+      const grab = async (path, prev) => {
+        const r = await get(path, stable(3 * 3600000));
+        return (r.response || []).map((x) => compactMatch(x, prev)).filter(Boolean);
+      };
+      let ms = [], err = null;
+      try { ms = await grab(`/fixtures?team=${id}&last=30`, false); } catch (e) { err = e; }
+      if (ms.length < 8) {
+        for (const s of [season, season - 1]) {
+          try {
+            const more = await grab(`/fixtures?team=${id}&season=${s}&status=FT-AET-PEN`, s !== season);
+            const seen = new Set(ms.map((m) => m.id));
+            ms = ms.concat(more.filter((m) => !seen.has(m.id)));
+            err = null;
+          } catch (e) { err = err || e; }
+          if (ms.length >= 14) break;
+        }
+        ms.sort((x, y) => y.ts - x.ts);
+        ms = ms.slice(0, 40);
+      }
+      if (!ms.length && err) throw err;
+      return ms;
+    };
+
     // --- news (deep only): starts first and runs beside everything else. The news proxy can take 15-30 s, so the run only
     //     waits a short grace period at the very end; a late answer is handed over through opts.onLate.
     const newsP = deep && opts.news !== false ? task('news', 'Τελευταία νέα (Google News)', async () => {
@@ -1514,14 +1594,8 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
         cset(name, ms, true);
         return ms;
       }, { okNote: (v) => v.length + ' αγώνες' }),
-      task('teamH', `Τελευταίοι αγώνες ${fix.home.name}`, async () => {
-        const r = await get(`/fixtures?team=${hid}&last=30`, stable(3 * 3600000));
-        return r.response.map((x) => compactMatch(x, false)).filter(Boolean);
-      }, { okNote: (v) => v.length + ' αγώνες' }),
-      task('teamA', `Τελευταίοι αγώνες ${fix.away.name}`, async () => {
-        const r = await get(`/fixtures?team=${aid}&last=30`, stable(3 * 3600000));
-        return r.response.map((x) => compactMatch(x, false)).filter(Boolean);
-      }, { okNote: (v) => v.length + ' αγώνες' }),
+      task('teamH', `Τελευταίοι αγώνες ${fix.home.name}`, () => teamHistory(hid), { okNote: (v) => v.length + ' αγώνες' }),
+      task('teamA', `Τελευταίοι αγώνες ${fix.away.name}`, () => teamHistory(aid), { okNote: (v) => v.length + ' αγώνες' }),
       normal ? task('standings', 'Βαθμολογία', async () => {
         const r = await get(`/standings?league=${L.id}&season=${season}`, stable(3 * 3600000));
         const rows = [];
@@ -2322,12 +2396,15 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const best = (ctx.odds && ctx.odds.best) || {};
     const have = Object.keys(best).length > 0;
     const info = { unc: b.unc, haveCorners: !!ctx.corners, haveCards: !!ctx.teamStats, best, names };
+    // modelless = nothing but league averages behind the numbers: simulated and shown, but never offered as a "value" bet
+    const usable = have && !b.modelless;
     const rec = {
       status: 'ok', noOdds: !have, ts: f.ts, completeness: b.completeness, crossLeague: !!b.crossLeague, lineups: !!ctx.lineups, nBooks: (ctx.odds && ctx.odds.nBooks) || 0,
+      dataMode: b.dataMode, marketLed: !!b.marketLed, modelless: !!b.modelless, lowDataNotes: (b.lowData || []).slice(0, 4),
       depth: o.depth, hasCorners: !!ctx.corners, hasCards: !!ctx.teamStats, referee: f.referee || null, calls: ctx.calls,
       sum: { p1: by['ft:1'].p, pX: by['ft:X'].p, p2: by['ft:2'].p, o25: by['ou:2.5:over'].p, gg: by['btts:yes'].p, xh: R.mean.hg, xa: R.mean.ag, corners: R.mean.coH + R.mean.coA, cards: R.mean.yH + R.mean.yA + R.mean.rH + R.mean.rA },
-      rows: have ? SC.evalSingles(mk, best, info) : [],
-      builders: have ? SC.builders(col, info) : [],
+      rows: usable ? SC.evalSingles(mk, best, info) : [],
+      builders: usable ? SC.builders(col, info) : [],
     };
     return rec;
   }
@@ -2414,7 +2491,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     o = Object.assign({ minEdge: 0.03, bankroll: 300, profile: 'bal', perMatch: 2, minLegP: 0.35, minCompl: 0.4 }, o || {});
     o.en = Object.assign({ goals: true, cards: true, corners: true, combos: true, parlay: true }, o.en || {});
     const ok = matches.filter((m) => m.status === 'ok' && !m.noOdds);
-    const tag = (r, m) => Object.assign({}, r, { mid: m.fix.id, ts: m.fix.ts, match: `${m.fix.home.name} – ${m.fix.away.name}`, league: m.fix.league.name, compl: m.completeness, lineups: m.lineups, lowData: m.completeness < o.minCompl });
+    const tag = (r, m) => Object.assign({}, r, { mid: m.fix.id, ts: m.fix.ts, match: `${m.fix.home.name} – ${m.fix.away.name}`, league: m.fix.league.name, compl: m.completeness, lineups: m.lineups, lowData: m.completeness < o.minCompl, marketLed: !!m.marketLed });
     const singles = [], suspicious = [], priced = [], pool = [], bbAll = [];
     for (const m of ok) {
       const rows = (m.rows || []).filter((r) => r.eligible && o.en[toggleOf(r.group)]);
@@ -2692,9 +2769,10 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
         <div><span>Πέναλτι / κόκκινη</span><b>${pc(by['pen:yes'].p)} / ${pc(by['red:yes'].p)}</b></div>
       </div>
       <div class="muted sx-small">Εκτίμηση γκολ (λ): βάση ${l.base.lh.toFixed(2)}–${l.base.la.toFixed(2)} → μετά από παράγοντες ${l.afterFactors.lh.toFixed(2)}–${l.afterFactors.la.toFixed(2)}${Math.abs(l.final.lh - l.afterFactors.lh) > 0.005 ? ` → μετά την αγορά ${l.final.lh.toFixed(2)}–${l.final.la.toFixed(2)}` : ''}.
-        Αξιοπιστία δεδομένων: <span class="tag ${cc}">${cl} (${Math.round(b.completeness * 100)}%)</span>${b.crossLeague ? ' <span class="tag mid">σύγκριση διαφορετικών λιγκών/κύπελλο</span>' : ''}</div>
+        Αξιοπιστία δεδομένων: <span class="tag ${cc}">${cl} (${Math.round(b.completeness * 100)}%)</span>${b.crossLeague ? ' <span class="tag mid">σύγκριση διαφορετικών λιγκών/κύπελλο</span>' : ''}${b.dataMode && b.dataMode !== 'full' ? ` <span class="tag low">${b.marketLed ? 'χαμηλά δεδομένα · βασισμένο κυρίως στην αγορά' : 'χαμηλά δεδομένα'}</span>` : ''}</div>
+      ${b.lowData && b.lowData.length ? `<div class="sx-lowdata"><b>Γιατί η εκτίμηση είναι λιγότερο αξιόπιστη:</b><ul>${b.lowData.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
       ${ctx.apiPred ? `<div class="muted sx-small">Δεύτερη γνώμη API-Football: ${pc(ctx.apiPred.home)}/${pc(ctx.apiPred.draw)}/${pc(ctx.apiPred.away)}${ctx.apiPred.advice ? ' · ' + esc(ctx.apiPred.advice) : ''}</div>` : ''}
-      ${b.blend && b.blend.market ? `<div class="muted sx-small">Αγορά (χωρίς περιθώριο): ${pc(b.blend.market.h)}/${pc(b.blend.market.d)}/${pc(b.blend.market.a)} · καθαρό μοντέλο: ${pc(b.blend.pure.h)}/${pc(b.blend.pure.d)}/${pc(b.blend.pure.a)}</div>` : '<div class="muted sx-small">Δεν υπάρχουν ακόμα αποδόσεις: το αποτέλεσμα βασίζεται μόνο στο μοντέλο.</div>'}
+      ${b.blend && b.blend.market ? `<div class="muted sx-small">${b.blend.src === 'api' ? 'Πρόβλεψη API-Football' : 'Αγορά (χωρίς περιθώριο)'}: ${pc(b.blend.market.h)}/${pc(b.blend.market.d)}/${pc(b.blend.market.a)} · καθαρό μοντέλο: ${pc(b.blend.pure.h)}/${pc(b.blend.pure.d)}/${pc(b.blend.pure.a)}</div>` : '<div class="muted sx-small">Δεν υπάρχουν ακόμα αποδόσεις: το αποτέλεσμα βασίζεται μόνο στο μοντέλο.</div>'}
       <div class="sx-btns"><button class="primary" data-sx="watch">🎮 Δες τον αγώνα</button><button data-sx="likely">🎯 Πιθανότερο σενάριο (${lk.h}-${lk.a})</button><button data-sx="reseed">🎲 Νέα προσομοίωση</button><button data-sx="rerun">↻ Ανανέωση δεδομένων &amp; επανάληψη</button></div>
       <p class="note">Στατιστική εκτίμηση, όχι εγγύηση κέρδους και όχι χρηματοοικονομική συμβουλή. Έλεγξε την πραγματική απόδοση πριν στοιχηματίσεις και παίξε μόνο ό,τι αντέχεις να χάσεις.</p></section>`;
     h += `<div class="seg sx-tabs">${[['tips', '💡 Προτάσεις'], ['mk', '📊 Αγορές'], ['fac', '⚙ Παράγοντες'], ['charts', '📈 Γραφήματα'], ['news', '📰 Νέα'], ['data', '🔎 Δεδομένα']].map(([k, t]) => `<button class="tabbtn${st.tab === k ? ' on' : ''}" data-sx="tab" data-t="${k}">${t}</button>`).join('')}</div>`;
@@ -2960,7 +3038,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
   }
   function persistScan() {
     try {
-      const slimRecs = (sc.recs || []).map((r) => ({ fix: r.fix, status: r.status, note: r.note, noOdds: r.noOdds, completeness: r.completeness, lineups: r.lineups, nBooks: r.nBooks, depth: r.depth, hasCorners: r.hasCorners, hasCards: r.hasCards, referee: r.referee, sum: r.sum, rows: (r.rows || []).filter((x) => x.eligible), builders: r.builders }));
+      const slimRecs = (sc.recs || []).map((r) => ({ fix: r.fix, status: r.status, note: r.note, noOdds: r.noOdds, completeness: r.completeness, dataMode: r.dataMode, marketLed: r.marketLed, modelless: r.modelless, lowDataNotes: r.lowDataNotes, lineups: r.lineups, nBooks: r.nBooks, depth: r.depth, hasCorners: r.hasCorners, hasCards: r.hasCards, referee: r.referee, sum: r.sum, rows: (r.rows || []).filter((x) => x.eligible), builders: r.builders }));
       localStorage.setItem('lbd_scan', JSON.stringify({ day: sc.day, at: sc.at, depth: sc.depth, recs: slimRecs }));
     } catch {}
   }
@@ -3078,7 +3156,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     h += `<details class="sx-det"><summary><b>Όλοι οι αγώνες της σάρωσης</b> <span class="muted">(${rows.length})</span></summary><div class="sx-scroll"><table class="sx-tbl"><thead><tr><th>Ώρα</th><th>Αγώνας</th><th>1/Χ/2</th><th>O2.5</th><th>GG</th><th>Κόρν.</th><th>Κάρτ.</th><th></th></tr></thead><tbody>${rows.map((r) => {
       if (r.status !== 'ok') return `<tr><td>${hhmm(r.fix.ts)}</td><td>${esc(r.fix.home.name)} – ${esc(r.fix.away.name)}</td><td colspan="6" class="muted">${esc(r.note || 'δεν σαρώθηκε')}</td></tr>`;
       const s = r.sum, [cl, cc] = window.SimBuild.completenessLabel(r.completeness);
-      return `<tr><td>${hhmm(r.fix.ts)}</td><td>${esc(r.fix.home.name)} – ${esc(r.fix.away.name)}<div class="muted sx-small">${esc(r.fix.league.name)} · <span class="tag ${cc}">${cl}</span> ${r.lineups ? '· ενδεκάδες ✓' : ''}${r.noOdds ? ' · <span class="neg">χωρίς αποδόσεις</span>' : ''}</div></td><td>${pc(s.p1)}/${pc(s.pX)}/${pc(s.p2)}</td><td>${pc(s.o25)}</td><td>${pc(s.gg)}</td><td>${s.corners.toFixed(1)}${r.hasCorners ? '' : '*'}</td><td>${s.cards.toFixed(1)}${r.hasCards ? '' : '*'}</td><td><button class="mini" data-sx="scanpick" data-id="${r.fix.id}">▶</button></td></tr>`;
+      return `<tr><td>${hhmm(r.fix.ts)}</td><td>${esc(r.fix.home.name)} – ${esc(r.fix.away.name)}<div class="muted sx-small">${esc(r.fix.league.name)} · <span class="tag ${cc}">${cl}</span> ${r.lineups ? '· ενδεκάδες ✓' : ''}${r.dataMode && r.dataMode !== 'full' ? ` · <span class="tag low">${r.modelless ? 'μόνο μέσοι όροι' : r.marketLed ? 'χαμηλά δεδομένα · κυρίως αγορά' : 'χαμηλά δεδομένα'}</span>` : ''}${r.noOdds ? ' · <span class="neg">χωρίς αποδόσεις</span>' : ''}${r.modelless && !r.noOdds ? ' · <span class="neg">δεν προτείνεται στοίχημα</span>' : ''}</div></td><td>${pc(s.p1)}/${pc(s.pX)}/${pc(s.p2)}</td><td>${pc(s.o25)}</td><td>${pc(s.gg)}</td><td>${s.corners.toFixed(1)}${r.hasCorners ? '' : '*'}</td><td>${s.cards.toFixed(1)}${r.hasCards ? '' : '*'}</td><td><button class="mini" data-sx="scanpick" data-id="${r.fix.id}">▶</button></td></tr>`;
     }).join('')}</tbody></table></div><p class="note">* χωρίς στατιστικά ομάδων — μέσος όρος λίγκας, δεν προτείνεται αγορά κόρνερ/καρτών.</p></details>`;
     h += `<div class="sx-btns"><button class="primary" data-sx="scanstart">↻ Νέα σάρωση (ενδεκάδες &amp; αποδόσεις)</button><button data-sx="scansetup">Ρυθμίσεις σάρωσης</button><button data-sx="scanclose">Κλείσιμο</button></div>
       <p class="note">Στατιστική εκτίμηση, όχι εγγύηση κέρδους και όχι χρηματοοικονομική συμβουλή. Το «edge» είναι η διαφορά του μοντέλου από την τιμή· στα κόρνερ/κάρτες το μοντέλο δεν ανακατεύεται με την αγορά, για αυτό είναι πιο αβέβαιο. Οι ενδεκάδες βγαίνουν περίπου 60' πριν τη σέντρα — ξανατρέξε τότε. Παίξε μόνο ό,τι αντέχεις να χάσεις.</p>`;
