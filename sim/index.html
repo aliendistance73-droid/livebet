@@ -836,9 +836,9 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     for (const L of [-2.5, -2, -1.5, -1, -0.5, 0.5, 1, 1.5, 2, 2.5]) {
       const whole = Math.abs(L % 1) < 1e-9;
       const pw = sumMat(R, (i, j) => i + L > j), pp = whole ? sumMat(R, (i, j) => i + L === j) : 0;
-      add(`ah:h:${L}`, 'ah', `${names.h} ${fmt(L)}`, pw, whole ? { type: 'push', pp } : {});
+      add(`ah:h:${L}`, 'ah', M.ahLabel(names.h, L), pw, whole ? { type: 'push', pp } : {});
       const qw = sumMat(R, (i, j) => j - L > i), qp = whole ? sumMat(R, (i, j) => j - L === i) : 0;
-      add(`ah:a:${-L}`, 'ah', `${names.a} ${fmt(-L)}`, qw, whole ? { type: 'push', pp: qp } : {});
+      add(`ah:a:${-L}`, 'ah', M.ahLabel(names.a, -L), qw, whole ? { type: 'push', pp: qp } : {});
     }
 
     // corners
@@ -886,6 +886,16 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     }
     best.res = res; best.pRes = res === '1' ? p1 : res === '2' ? p2 : pX;
     return best;
+  };
+
+  /* Plain-Greek label of an Asian handicap: «AEK handicap +2.5 · κερδίζει αν δεν χάσει με 3+ γκολ». L = the line this team starts with. */
+  M.ahLabel = function (name, L) {
+    const sg = L > 0 ? '+' + L : L < 0 ? '−' + Math.abs(L) : '0';
+    const a = Math.abs(L), whole = Math.abs(a % 1) < 1e-9, need = Math.floor(a) + 1;   // goal margin that decides it
+    let how;
+    if (L > 0) how = whole ? `κερδίζει αν νικήσει ή φέρει ισοπαλία · επιστροφή αν χάσει με ${a} γκολ · χάνει αν χάσει με ${a + 1}+` : (need === 1 ? 'κερδίζει αν νικήσει ή φέρει ισοπαλία' : `κερδίζει αν δεν χάσει με ${need}+ γκολ διαφορά`);
+    else how = whole ? `κερδίζει αν νικήσει με ${a + 1}+ (επιστροφή αν νικήσει με ${a})` : (need === 1 ? 'κερδίζει μόνο αν νικήσει' : `κερδίζει μόνο αν νικήσει με ${need}+ γκολ διαφορά`);
+    return `${name} handicap ${sg} · ${how}`;
   };
 
   // ===================================================== odds parsing
@@ -1001,6 +1011,38 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     return out;
   };
 
+  /* Cross-check of handicap-type prices (Asian handicap, double chance, draw-no-bet) against the bookmakers' own 1X2 (+ Over 2.5) consensus.
+     A Poisson model is fitted to that consensus alone; its fair price for the same bet is compared with the quoted one. A quote that is
+     more than `tol` above that fair price is NOT a bargain, it is almost always a different line / market read by mistake. */
+  M.coherence = function (S, consensus, markets, best, o) {
+    o = Object.assign({ tol: 0.15, price: (b) => (b.n >= 3 ? b.med : b.o) }, o || {});
+    const out = { ok: false, bad: new Set(), info: {} };
+    if (!consensus || !consensus.ft || !S || !S.poissonMatrix) return out;
+    const target = { h: consensus.ft['1'], d: consensus.ft.X, a: consensus.ft['2'], o25: consensus.ou && consensus.ou['2.5'] ? consensus.ou['2.5'].over : null };
+    const r = M.solveLambdas(S, target, { lh: 1.4, la: 1.1 });
+    const w = 11, mat = S.poissonMatrix(r.lh, r.la, 10);
+    const P = (f) => { let t = 0; for (let i = 0; i <= 10; i++) for (let j = 0; j <= 10; j++) if (f(i, j)) t += mat[i * w + j]; return t; };
+    out.ok = true; out.lh = r.lh; out.la = r.la;
+    for (const m of markets) {
+      const b = best[m.key]; if (!b) continue;
+      let f = null, g = null, mt;
+      if ((mt = /^ah:h:(-?\d+(?:\.\d+)?)$/.exec(m.key))) { const L = +mt[1]; f = (i, j) => i + L > j; if (Math.abs(L % 1) < 1e-9) g = (i, j) => i + L === j; }
+      else if ((mt = /^ah:a:(-?\d+(?:\.\d+)?)$/.exec(m.key))) { const L = +mt[1]; f = (i, j) => j + L > i; if (Math.abs(L % 1) < 1e-9) g = (i, j) => j + L === i; }
+      else if (m.key === 'dc:1X') f = (i, j) => i >= j;
+      else if (m.key === 'dc:X2') f = (i, j) => j >= i;
+      else if (m.key === 'dc:12') f = (i, j) => i !== j;
+      else if (m.key === 'dnb:1') { f = (i, j) => i > j; g = (i, j) => i === j; }
+      else if (m.key === 'dnb:2') { f = (i, j) => j > i; g = (i, j) => i === j; }
+      else continue;
+      const p = P(f), pp = g ? P(g) : 0;
+      if (!(p > 0.001)) continue;
+      const fair = g ? (1 - pp) / p : 1 / p, price = o.price(b), ratio = price / fair;
+      out.info[m.key] = { pMkt: p, fair, price, ratio };
+      if (ratio > 1 + o.tol) out.bad.add(m.key);
+    }
+    return out;
+  };
+
   // ===================================================== value / Kelly
   M.MIN_ODDS = 1.30;
   M.kelly = function (m, o, frac, cap, unc) {
@@ -1021,7 +1063,9 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
       const ev = m.p * (o - 1) - pl;
       const fair = m.type === 'push' ? (1 - (m.pp || 0)) / m.p : 1 / m.p;
       const sp = M.kelly(m, o, opts.kellyFrac, opts.cap, opts.unc);
-      rows.push({ key: m.key, group: m.group, label: m.label, p: m.p, odds: o, book: b.book, med: b.med, nBooks: b.n, fair, ev, edge: ev, kellyPct: sp, stake: opts.bankroll ? sp * opts.bankroll : null, minOdds: fair * 1.06, eligible: o >= M.MIN_ODDS, value: ev >= opts.minEdge && o >= M.MIN_ODDS && sp > 0 });
+      const bad = !!(opts.bad && opts.bad.has(m.key)), ci = opts.coh && opts.coh.info[m.key];
+      rows.push({ key: m.key, group: m.group, label: m.label, p: m.p, odds: o, book: b.book, med: b.med, nBooks: b.n, fair, ev, edge: ev, kellyPct: bad ? 0 : sp, stake: opts.bankroll && !bad ? sp * opts.bankroll : null, minOdds: fair * 1.06, eligible: o >= M.MIN_ODDS && !bad, value: !bad && ev >= opts.minEdge && o >= M.MIN_ODDS && sp > 0,
+        incoherent: bad, mktFair: ci ? ci.fair : null });
     }
     rows.sort((a, b) => b.ev - a.ev);
     return rows;
@@ -2191,7 +2235,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
   SC.MIN_LEG = 1.40;          // every parlay leg
   SC.PARLAY_LEGS = 3;         // exactly 3 different matches
   const EXTRA_UNC = { corners: 0.03, cards: 0.04 };   // corners / cards come from the model alone (not blended with the market)
-  const SUSPECT = { corners: 0.2, cards: 0.2, def: 0.3 };   // an edge above this almost always means the model is missing something
+  const SUSPECT = { corners: 0.2, cards: 0.2, def: 0.2 };   // an edge above this almost always means the model is missing something
   const WL = /^(ft|dc|dnb|ou|btts|tt|cs|ah|co|cd|cmb|ht_ou):/;
   const ref = (b) => (b.n >= 3 ? b.med : b.o);          // reference price: the median bookmaker when several quote it, else the only price
   SC.refPrice = ref;
@@ -2236,11 +2280,13 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
       const ev = m.p * (price - 1) - plR, evCons = pw * (price - 1) - plC;
       const fair = push ? (1 - (m.pp || 0)) / m.p : 1 / m.p;
       const kel = MK.kelly(m, price, 1, 1, u);
+      const incoherent = !!(info.coh && info.coh.bad.has(m.key)), ci = info.coh && info.coh.info[m.key];
       rows.push({
         key: m.key, group: m.group, fam: famOf(m.key), label: m.label, p: m.p, pCons: pw, price, bestOdds: b.o, book: b.book, nBooks: b.n,
         fair, minOdds: fair * 1.06, ev, evCons, kelly: kel, unc: u, push,
-        eligible: price >= info.minOdds && price <= info.maxOdds && m.p >= info.minP,
-        suspicious: ev > (SUSPECT[m.group] || SUSPECT.def),
+        eligible: price >= info.minOdds && price <= info.maxOdds && m.p >= info.minP && !incoherent,
+        suspicious: incoherent || ev > (SUSPECT[m.group] || SUSPECT.def),
+        incoherent, mktFair: ci ? ci.fair : null,
       });
     }
     return rows;
@@ -2258,6 +2304,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
   }
 
   // ===================================================== free-form bet builders (joint probabilities from the simulation)
+  const AHL = (name, L) => dep('SimMarkets', './simmarkets.js').ahLabel(name, L);
   const LEGS = [];
   (function () {
     const add = (key, fam, lab, f) => LEGS.push({ key, fam, lab, f });
@@ -2265,10 +2312,10 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     add('ft:2', 'res', (n) => `2 · ${n.a}`, (o) => o.hg < o.ag);
     add('dc:1X', 'res', (n) => `1Χ · ${n.h} ή ισοπαλία`, (o) => o.hg >= o.ag);
     add('dc:X2', 'res', (n) => `Χ2 · ισοπαλία ή ${n.a}`, (o) => o.hg <= o.ag);
-    add('ah:h:-1.5', 'res', (n) => `${n.h} −1.5 (νίκη με 2+ γκολ)`, (o) => o.hg - o.ag >= 2);
-    add('ah:a:1.5', 'res', (n) => `${n.a} +1.5`, (o) => o.ag - o.hg > -2);
-    add('ah:h:1.5', 'res', (n) => `${n.h} +1.5`, (o) => o.hg - o.ag > -2);
-    add('ah:a:-1.5', 'res', (n) => `${n.a} −1.5 (νίκη με 2+ γκολ)`, (o) => o.ag - o.hg >= 2);
+    add('ah:h:-1.5', 'res', (n) => AHL(n.h, -1.5), (o) => o.hg - o.ag >= 2);
+    add('ah:a:1.5', 'res', (n) => AHL(n.a, 1.5), (o) => o.ag - o.hg > -2);
+    add('ah:h:1.5', 'res', (n) => AHL(n.h, 1.5), (o) => o.hg - o.ag > -2);
+    add('ah:a:-1.5', 'res', (n) => AHL(n.a, -1.5), (o) => o.ag - o.hg >= 2);
     for (const L of [1.5, 2.5, 3.5]) add(`ou:${L}:over`, 'ou', () => `Over ${L} γκολ`, (o) => o.hg + o.ag > L);
     for (const L of [2.5, 3.5, 4.5]) add(`ou:${L}:under`, 'ou', () => `Under ${L} γκολ`, (o) => o.hg + o.ag < L);
     add('btts:yes', 'btts', () => 'GG', (o) => o.hg > 0 && o.ag > 0);
@@ -2332,6 +2379,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
       if (grp === 'cards' && !info.haveCards) return;
       const b = info.best[l.key];
       if (!b) return;
+      if (info.coh && info.coh.bad.has(l.key)) return;     // a price that does not agree with the market is never used as a leg
       const p = count([col.bits[k]]) / n;
       if (p < 0.3 || p > 0.95) return;
       cand.push({ k, key: l.key, fam: l.fam, grp, p, price: ref(b), lab: l.lab(info.names) });
@@ -2395,7 +2443,9 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const mk = MK.markets(R, names), by = Object.fromEntries(mk.map((m) => [m.key, m]));
     const best = (ctx.odds && ctx.odds.best) || {};
     const have = Object.keys(best).length > 0;
-    const info = { unc: b.unc, haveCorners: !!ctx.corners, haveCards: !!ctx.teamStats, best, names };
+    // handicap / double-chance / draw-no-bet quotes are cross-checked against the 1X2 + O/U consensus; incoherent ones are dropped
+    const coh = MK.coherence(S, ctx.odds && ctx.odds.consensus, mk, best, { tol: 0.15, price: ref });
+    const info = { unc: b.unc, haveCorners: !!ctx.corners, haveCards: !!ctx.teamStats, best, names, coh };
     // modelless = nothing but league averages behind the numbers: simulated and shown, but never offered as a "value" bet
     const usable = have && !b.modelless;
     const rec = {
@@ -2403,6 +2453,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
       dataMode: b.dataMode, marketLed: !!b.marketLed, modelless: !!b.modelless, lowDataNotes: (b.lowData || []).slice(0, 4),
       depth: o.depth, hasCorners: !!ctx.corners, hasCards: !!ctx.teamStats, referee: f.referee || null, calls: ctx.calls,
       sum: { p1: by['ft:1'].p, pX: by['ft:X'].p, p2: by['ft:2'].p, o25: by['ou:2.5:over'].p, gg: by['btts:yes'].p, xh: R.mean.hg, xa: R.mean.ag, corners: R.mean.coH + R.mean.coA, cards: R.mean.yH + R.mean.yA + R.mean.rH + R.mean.rA },
+      incoherent: [...coh.bad].map((k) => ({ label: by[k].label, price: coh.info[k].price, fair: coh.info[k].fair })),
       rows: usable ? SC.evalSingles(mk, best, info) : [],
       builders: usable ? SC.builders(col, info) : [],
     };
@@ -2494,9 +2545,12 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const tag = (r, m) => Object.assign({}, r, { mid: m.fix.id, ts: m.fix.ts, match: `${m.fix.home.name} – ${m.fix.away.name}`, league: m.fix.league.name, compl: m.completeness, lineups: m.lineups, lowData: m.completeness < o.minCompl, marketLed: !!m.marketLed });
     const singles = [], suspicious = [], priced = [], pool = [], bbAll = [];
     for (const m of ok) {
-      const rows = (m.rows || []).filter((r) => r.eligible && o.en[toggleOf(r.group)]);
+      const enabled = (m.rows || []).filter((r) => o.en[toggleOf(r.group)]);
+      const rows = enabled.filter((r) => r.eligible);
       const val = rows.filter((r) => r.ev >= o.minEdge && r.evCons > 0);
       suspicious.push(...val.filter((r) => r.suspicious).map((r) => tag(r, m)));
+      // quotes that disagree with the market's own 1X2 are listed as suspicious (never used), so the user sees what was thrown away
+      suspicious.push(...enabled.filter((r) => r.incoherent && r.price >= SC.MIN_SINGLE && r.ev >= o.minEdge).map((r) => tag(r, m)));
       const good = val.filter((r) => !r.suspicious);
       pickDistinct(good.filter((r) => r.group !== 'combo'), o.perMatch).forEach((r) => singles.push(tag(r, m)));
       pickDistinct(good.filter((r) => r.group === 'combo'), 1).forEach((r) => priced.push(tag(r, m)));
@@ -2663,7 +2717,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
         <label>Βάθος δεδομένων<select id="cfgDepth"><option value="light"${cfg.depth === 'light' ? ' selected' : ''}>Ελαφρύ (~8 κλήσεις)</option><option value="normal"${cfg.depth === 'normal' ? ' selected' : ''}>Κανονικό (~18)</option><option value="deep"${cfg.depth === 'deep' ? ' selected' : ''}>Βαθύ (~45)</option></select></label>
         <label>Προσομοιώσεις<select id="cfgN"><option value="8000"${cfg.nSim === 8000 ? ' selected' : ''}>8.000 (γρήγορο)</option><option value="20000"${cfg.nSim === 20000 ? ' selected' : ''}>20.000</option><option value="50000"${cfg.nSim === 50000 ? ' selected' : ''}>50.000 (πιο σταθερό)</option></select></label>
         <label>Βάρος αγοράς: <b id="cfgBlendV">${cfg.blendW}%</b><input type="range" id="cfgBlend" min="0" max="100" step="5" value="${cfg.blendW}"></label>
-        <label>Bankroll (€)<input type="number" id="cfgBank" min="0" step="10" value="${cfg.bankroll}"></label>
+        <label>Bankroll ($)<input type="number" id="cfgBank" min="0" step="10" value="${cfg.bankroll}"></label>
         <label>Ελάχιστο edge για value (%)<input type="number" id="cfgEdge" min="0" max="30" step="0.5" value="${cfg.minEdge}"></label>
       </div>
       <p class="note">Το «βάρος αγοράς» ανακατεύει το μοντέλο με τις αποδόσεις των bookmakers (χωρίς το περιθώριό τους): 0% = καθαρό μοντέλο, 100% = μόνο αγορά. Οι αγορές είναι συνήθως πολύ ακριβείς, γι' αυτό το 30% μειώνει τα ψεύτικα value. Πριν από κάθε προσομοίωση ανανεώνονται ενδεκάδες, τραυματισμοί, αποδόσεις, διαιτητής, καιρός και νέα.</p>`;
@@ -2786,16 +2840,18 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const ctx = st.ctx, b = st.build, mk = st.markets;
     const best = (ctx.odds && ctx.odds.best) || {};
     const have = Object.keys(best).length > 0;
-    const rows = MK.evaluate(mk, best, { minEdge: cfg.minEdge / 100, bankroll: cfg.bankroll, unc: b.unc });
+    const coh = MK.coherence(S, ctx.odds && ctx.odds.consensus, mk, best, { tol: 0.15, price: (x) => (x.n >= 3 ? x.med : x.o) });
+    const rows = MK.evaluate(mk, best, { minEdge: cfg.minEdge / 100, bankroll: cfg.bankroll, unc: b.unc, coh, bad: coh.bad });
     const value = rows.filter((r) => r.value).slice(0, 8);
     let h = '<h2>Value σε σχέση με τις αποδόσεις</h2>';
+    if (coh.bad.size) h += `<div class="sx-lowdata"><b>⚠ Αγνοήθηκαν τιμές που δεν συμβαδίζουν με την αγορά</b> (πιθανό λάθος γραμμής ή παλιά τιμή — έλεγξέ τες χειροκίνητα στο bookmaker πριν παίξεις):<ul>${[...coh.bad].map((k) => { const r = rows.find((x) => x.key === k), ci = coh.info[k]; return `<li>${esc(r ? r.label : k)} @ ${od(ci.price)} — η αγορά 1Χ2 δίνει δίκαιη απόδοση περίπου ${od(ci.fair)}</li>`; }).join('')}</ul></div>`;
     if (!have) h += '<p class="muted">Οι αποδόσεις δεν έχουν ανοίξει ακόμα για αυτόν τον αγώνα. Δες παρακάτω τις πιθανότερες αγορές με την ελάχιστη απόδοση που αξίζει.</p>';
     else if (!value.length) h += `<p class="muted">Δεν βρέθηκε αγορά με απόδοση ≥ 1.30 και edge ≥ ${cfg.minEdge}% μετά από το περιθώριο ασφαλείας (${pc(b.unc, 1)} στην πιθανότητα). Και αυτή είναι απάντηση: δεν έχει κάθε αγώνας value.</p>`;
     for (const r of value) {
       h += `<div class="pick value"><div class="big">${esc(r.label)} @ ${od(r.odds)} <span class="muted">(${esc(r.book)})</span></div>
         <div class="m">Μοντέλο <b>${pc(r.p, 1)}</b> · δίκαιη απόδοση ${od(r.fair)} · edge <b class="pos">+${(r.ev * 100).toFixed(1)}%</b> · ελάχιστη απόδοση που αξίζει ${od(r.minOdds)} · μέση αγορά ${od(r.med)} (${r.nBooks} bookmakers)</div>
-        <div class="m">Προτεινόμενο μέγεθος (¼ Kelly, όριο 3%): <b>${(r.kellyPct * 100).toFixed(1)}%</b> του bankroll${cfg.bankroll ? ' ≈ <b>€' + (r.kellyPct * cfg.bankroll).toFixed(2) + '</b>' : ''} — μαθηματικός υπολογισμός, την απόφαση την παίρνεις εσύ.</div>
-        ${r.ev > 0.25 ? '<div class="m neg">⚠ Πολύ μεγάλο edge (&gt;25%). Συνήθως σημαίνει ότι το μοντέλο δεν ξέρει κάτι (τραυματίας, αλλαγή ενδεκάδας, παλιά απόδοση) και όχι ότι η αγορά έκανε λάθος. Έλεγξε τα νέα και την ενδεκάδα πριν το εμπιστευτείς.</div>' : ''}</div>`;
+        <div class="m">Προτεινόμενο μέγεθος (¼ Kelly, όριο 3%): <b>${(r.kellyPct * 100).toFixed(1)}%</b> του bankroll${cfg.bankroll ? ' ≈ <b>$' + (r.kellyPct * cfg.bankroll).toFixed(2) + '</b>' : ''} — μαθηματικός υπολογισμός, την απόφαση την παίρνεις εσύ.</div>
+        ${r.ev > 0.2 ? '<div class="m neg">⚠ Πολύ μεγάλο edge (&gt;20%). Συνήθως σημαίνει ότι το μοντέλο δεν ξέρει κάτι (τραυματίας, αλλαγή ενδεκάδας, παλιά απόδοση) και όχι ότι η αγορά έκανε λάθος. Έλεγξε τα νέα και την ενδεκάδα πριν το εμπιστευτείς.</div>' : ''}</div>`;
     }
     // probable markets with the minimum playable odds
     const cand = mk.filter((m) => m.p >= 0.55 && m.p <= 0.93 && !/^(tg|oe|fg:none|late|g30|co:1x2|dnb)/.test(m.key) && !/^htft/.test(m.key)).sort((x, y) => y.p - x.p);
@@ -2819,7 +2875,8 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
   // ------------------------------------------------ tab: all markets
   function marketsHtml() {
     const best = (st.ctx.odds && st.ctx.odds.best) || {};
-    const rows = MK.evaluate(st.markets, best, { minEdge: cfg.minEdge / 100, bankroll: cfg.bankroll, unc: st.build.unc });
+    const coh = MK.coherence(S, st.ctx.odds && st.ctx.odds.consensus, st.markets, best, { tol: 0.15, price: (x) => (x.n >= 3 ? x.med : x.o) });
+    const rows = MK.evaluate(st.markets, best, { minEdge: cfg.minEdge / 100, bankroll: cfg.bankroll, unc: st.build.unc, coh, bad: coh.bad });
     const rb = Object.fromEntries(rows.map((r) => [r.key, r]));
     let h = `<label class="sx-chk"><input type="checkbox" id="sxOnlyOdds"${st.onlyOdds ? ' checked' : ''}> Μόνο αγορές με απόδοση</label>`;
     for (const [g, name] of Object.entries(MK.GROUPS)) {
@@ -2828,7 +2885,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
       h += `<details class="sx-det" data-g="${g}"${st.mkOpen[g] || g === 'ft' ? ' open' : ''}><summary><b>${name}</b> <span class="muted">(${list.length})</span></summary><table class="sx-tbl"><thead><tr><th>Αγορά</th><th>Π%</th><th>Δίκαιη</th><th>Απόδοση</th><th>Edge</th></tr></thead><tbody>`;
       for (const m of list) {
         const r = rb[m.key], fair = m.type === 'push' ? (1 - (m.pp || 0)) / m.p : 1 / m.p;
-        h += `<tr class="${r && r.value ? 'val' : ''}"><td>${esc(m.label)}</td><td>${pc(m.p, m.p < 0.1 ? 1 : 0)}</td><td>${od(fair)}</td><td>${r ? od(r.odds) : '—'}</td><td>${r ? `<span class="${r.ev >= 0 ? 'pos' : 'neg'}">${r.ev >= 0 ? '+' : ''}${(r.ev * 100).toFixed(1)}%</span>` : ''}</td></tr>`;
+        h += `<tr class="${r && r.value ? 'val' : ''}"><td>${esc(m.label)}</td><td>${pc(m.p, m.p < 0.1 ? 1 : 0)}</td><td>${od(fair)}</td><td>${r ? od(r.odds) + (r.incoherent ? ' <span class="neg" title="Δεν συμβαδίζει με την αγορά 1Χ2">⚠</span>' : '') : '—'}</td><td>${r ? (r.incoherent ? '<span class="neg">ύποπτη τιμή</span>' : `<span class="${r.ev >= 0 ? 'pos' : 'neg'}">${r.ev >= 0 ? '+' : ''}${(r.ev * 100).toFixed(1)}%</span>`) : ''}</td></tr>`;
       }
       h += '</tbody></table></details>';
     }
@@ -3038,7 +3095,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
   }
   function persistScan() {
     try {
-      const slimRecs = (sc.recs || []).map((r) => ({ fix: r.fix, status: r.status, note: r.note, noOdds: r.noOdds, completeness: r.completeness, dataMode: r.dataMode, marketLed: r.marketLed, modelless: r.modelless, lowDataNotes: r.lowDataNotes, lineups: r.lineups, nBooks: r.nBooks, depth: r.depth, hasCorners: r.hasCorners, hasCards: r.hasCards, referee: r.referee, sum: r.sum, rows: (r.rows || []).filter((x) => x.eligible), builders: r.builders }));
+      const slimRecs = (sc.recs || []).map((r) => ({ fix: r.fix, status: r.status, note: r.note, noOdds: r.noOdds, completeness: r.completeness, incoherent: r.incoherent, dataMode: r.dataMode, marketLed: r.marketLed, modelless: r.modelless, lowDataNotes: r.lowDataNotes, lineups: r.lineups, nBooks: r.nBooks, depth: r.depth, hasCorners: r.hasCorners, hasCards: r.hasCards, referee: r.referee, sum: r.sum, rows: (r.rows || []).filter((x) => x.eligible), builders: r.builders }));
       localStorage.setItem('lbd_scan', JSON.stringify({ day: sc.day, at: sc.at, depth: sc.depth, recs: slimRecs }));
     } catch {}
   }
@@ -3150,13 +3207,13 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const inPlan = new Set(plan.filter((x) => x.bucket === 'single').map((x) => x.ref.mid + '|' + x.ref.key));
     const rest = o.singles.filter((s) => !inPlan.has(s.mid + '|' + s.key));
     if (rest.length) h += `<details class="sx-det"><summary><b>Άλλα μονά με value εκτός πλάνου</b> <span class="muted">(${rest.length})</span></summary>${rest.map((s) => `<div class="pick value"><div class="m"><b>${esc(s.match)}</b> · ${hhmm(s.ts)} ${grpTag(s.group)} ${s.lowData ? '<span class="tag low">χαμηλά δεδομένα</span>' : ''}</div><div class="big">${esc(s.label)} @ ${od(s.price)}</div><div class="m">μοντέλο ${pc(s.p)} · δίκαιη ${od(s.fair)} · edge ${signed(s.ev)} (συντηρητικά ${signed(s.evCons)}) · παίξε αν ≥ ${od(Math.max(s.minOdds, 1.3))}</div></div>`).join('')}</details>`;
-    if (o.suspicious.length) h += `<details class="sx-det"><summary><b>⚠ Ύποπτα value (πολύ μεγάλο edge)</b> <span class="muted">(${o.suspicious.length}) — δεν μπαίνουν στο πλάνο</span></summary>${o.suspicious.slice(0, 12).map((s) => `<div class="pick"><div class="m"><b>${esc(s.match)}</b> · ${esc(s.label)} @ ${od(s.price)} · μοντέλο ${pc(s.p)} · edge ${signed(s.ev)}</div></div>`).join('')}<p class="note">Edge τέτοιου μεγέθους συνήθως σημαίνει ότι το μοντέλο δεν ξέρει κάτι (τραυματίας, αλλαγή ενδεκάδας, παλιά τιμή) και όχι ότι η αγορά έκανε λάθος. Έλεγξε νέα/ενδεκάδα στην ανάλυση αγώνα.</p></details>`;
+    if (o.suspicious.length) h += `<details class="sx-det"><summary><b>⚠ Ύποπτα value (πολύ μεγάλο edge)</b> <span class="muted">(${o.suspicious.length}) — δεν μπαίνουν στο πλάνο</span></summary>${o.suspicious.slice(0, 12).map((s) => `<div class="pick"><div class="m"><b>${esc(s.match)}</b> · ${esc(s.label)} @ ${od(s.price)} · μοντέλο ${pc(s.p)} · edge ${signed(s.ev)}${s.incoherent ? ` · <span class="neg">η τιμή δεν συμβαδίζει με την αγορά 1Χ2 (δίκαιη ~${od(s.mktFair)}) — πιθανό λάθος γραμμής</span>` : ''}</div></div>`).join('')}<p class="note">Edge τέτοιου μεγέθους συνήθως σημαίνει ότι το μοντέλο δεν ξέρει κάτι (τραυματίας, αλλαγή ενδεκάδας, παλιά τιμή) και όχι ότι η αγορά έκανε λάθος. Έλεγξε νέα/ενδεκάδα στην ανάλυση αγώνα.</p></details>`;
     // overview of all scanned matches
     const rows = (sc.recs || []);
     h += `<details class="sx-det"><summary><b>Όλοι οι αγώνες της σάρωσης</b> <span class="muted">(${rows.length})</span></summary><div class="sx-scroll"><table class="sx-tbl"><thead><tr><th>Ώρα</th><th>Αγώνας</th><th>1/Χ/2</th><th>O2.5</th><th>GG</th><th>Κόρν.</th><th>Κάρτ.</th><th></th></tr></thead><tbody>${rows.map((r) => {
       if (r.status !== 'ok') return `<tr><td>${hhmm(r.fix.ts)}</td><td>${esc(r.fix.home.name)} – ${esc(r.fix.away.name)}</td><td colspan="6" class="muted">${esc(r.note || 'δεν σαρώθηκε')}</td></tr>`;
       const s = r.sum, [cl, cc] = window.SimBuild.completenessLabel(r.completeness);
-      return `<tr><td>${hhmm(r.fix.ts)}</td><td>${esc(r.fix.home.name)} – ${esc(r.fix.away.name)}<div class="muted sx-small">${esc(r.fix.league.name)} · <span class="tag ${cc}">${cl}</span> ${r.lineups ? '· ενδεκάδες ✓' : ''}${r.dataMode && r.dataMode !== 'full' ? ` · <span class="tag low">${r.modelless ? 'μόνο μέσοι όροι' : r.marketLed ? 'χαμηλά δεδομένα · κυρίως αγορά' : 'χαμηλά δεδομένα'}</span>` : ''}${r.noOdds ? ' · <span class="neg">χωρίς αποδόσεις</span>' : ''}${r.modelless && !r.noOdds ? ' · <span class="neg">δεν προτείνεται στοίχημα</span>' : ''}</div></td><td>${pc(s.p1)}/${pc(s.pX)}/${pc(s.p2)}</td><td>${pc(s.o25)}</td><td>${pc(s.gg)}</td><td>${s.corners.toFixed(1)}${r.hasCorners ? '' : '*'}</td><td>${s.cards.toFixed(1)}${r.hasCards ? '' : '*'}</td><td><button class="mini" data-sx="scanpick" data-id="${r.fix.id}">▶</button></td></tr>`;
+      return `<tr><td>${hhmm(r.fix.ts)}</td><td>${esc(r.fix.home.name)} – ${esc(r.fix.away.name)}<div class="muted sx-small">${esc(r.fix.league.name)} · <span class="tag ${cc}">${cl}</span> ${r.lineups ? '· ενδεκάδες ✓' : ''}${r.dataMode && r.dataMode !== 'full' ? ` · <span class="tag low">${r.modelless ? 'μόνο μέσοι όροι' : r.marketLed ? 'χαμηλά δεδομένα · κυρίως αγορά' : 'χαμηλά δεδομένα'}</span>` : ''}${r.noOdds ? ' · <span class="neg">χωρίς αποδόσεις</span>' : ''}${r.incoherent && r.incoherent.length ? ` · <span class="neg" title="${esc(r.incoherent.map((x) => x.label + ' @ ' + x.price.toFixed(2) + ' (δίκαιη ~' + x.fair.toFixed(2) + ')').join('; '))}">⚠ ${r.incoherent.length} ύποπτες τιμές handicap αγνοήθηκαν</span>` : ''}${r.modelless && !r.noOdds ? ' · <span class="neg">δεν προτείνεται στοίχημα</span>' : ''}</div></td><td>${pc(s.p1)}/${pc(s.pX)}/${pc(s.p2)}</td><td>${pc(s.o25)}</td><td>${pc(s.gg)}</td><td>${s.corners.toFixed(1)}${r.hasCorners ? '' : '*'}</td><td>${s.cards.toFixed(1)}${r.hasCards ? '' : '*'}</td><td><button class="mini" data-sx="scanpick" data-id="${r.fix.id}">▶</button></td></tr>`;
     }).join('')}</tbody></table></div><p class="note">* χωρίς στατιστικά ομάδων — μέσος όρος λίγκας, δεν προτείνεται αγορά κόρνερ/καρτών.</p></details>`;
     h += `<div class="sx-btns"><button class="primary" data-sx="scanstart">↻ Νέα σάρωση (ενδεκάδες &amp; αποδόσεις)</button><button data-sx="scansetup">Ρυθμίσεις σάρωσης</button><button data-sx="scanclose">Κλείσιμο</button></div>
       <p class="note">Στατιστική εκτίμηση, όχι εγγύηση κέρδους και όχι χρηματοοικονομική συμβουλή. Το «edge» είναι η διαφορά του μοντέλου από την τιμή· στα κόρνερ/κάρτες το μοντέλο δεν ανακατεύεται με την αγορά, για αυτό είναι πιο αβέβαιο. Οι ενδεκάδες βγαίνουν περίπου 60' πριν τη σέντρα — ξανατρέξε τότε. Παίξε μόνο ό,τι αντέχεις να χάσεις.</p>`;
