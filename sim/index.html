@@ -2240,6 +2240,25 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
   const ref = (b) => (b.n >= 3 ? b.med : b.o);          // reference price: the median bookmaker when several quote it, else the only price
   SC.refPrice = ref;
 
+  /* «Probable» mode (the default): the plan is built from the bets the model finds MOST LIKELY, not from the biggest gap to the price.
+     Ranking by edge picks the legs where the model disagrees most with the market, and those are mostly low-probability tails
+     (a +49% «edge» on a 11% parlay is a model error far more often than a bargain). So here:
+       - a single must have model probability >= minP, a parlay leg >= minLegP, a same-match combination >= minComboP;
+       - the price must not be below the model's fair price (edge >= the user's floor, default 0), and an edge above maxEdge is treated as
+         a model/price mistake and left out (it is listed under «suspicious»);
+       - everything is ranked by (conservative) probability;
+       - trivial lines (Over 0.5, Under 4.5/5.5 ...) are never offered, whatever the quote. */
+  SC.PROB = { minP: 0.50, minLegP: 0.55, minComboP: 0.35, maxEdge: 0.12, maxParlayOdds: 9, minBuilderP: 0.35 };
+  const TRIVIAL = /^(ou:0\.5:over|ou:(4\.5|5\.5):under|ou:5\.5:over|ht_ou:0\.5:under|ht_ou:2\.5:under|co:ou:7\.5:over|co:ou:13\.5:under|cd:ou:1\.5:over|cd:ou:6\.5:under|cd:ou:1\.5:under|tt:[ha]:2\.5:under)/;
+  SC.isTrivial = (key) => TRIVIAL.test(key);
+  /* does a single (evalSingles row) pass the filters of the chosen mode? o: {mode, minEdge} */
+  SC.passSingle = function (r, o) {
+    if (!r.eligible || r.trivial) return false;
+    if (o.mode === 'value') return r.ev >= o.minEdge && r.evCons > 0;
+    const P = SC.PROB;
+    return r.p >= (r.group === 'combo' ? P.minComboP : P.minP) && r.ev >= o.minEdge && r.ev <= P.maxEdge;
+  };
+
   const famOf = (key) => {
     if (/^(ft|dc|dnb|ah):/.test(key)) return 'res';
     if (/^ou:/.test(key)) return 'ou';
@@ -2281,10 +2300,11 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
       const fair = push ? (1 - (m.pp || 0)) / m.p : 1 / m.p;
       const kel = MK.kelly(m, price, 1, 1, u);
       const incoherent = !!(info.coh && info.coh.bad.has(m.key)), ci = info.coh && info.coh.info[m.key];
+      const trivial = TRIVIAL.test(m.key);
       rows.push({
         key: m.key, group: m.group, fam: famOf(m.key), label: m.label, p: m.p, pCons: pw, price, bestOdds: b.o, book: b.book, nBooks: b.n,
-        fair, minOdds: fair * 1.06, ev, evCons, kelly: kel, unc: u, push,
-        eligible: price >= info.minOdds && price <= info.maxOdds && m.p >= info.minP && !incoherent,
+        fair, minOdds: fair * 1.06, ev, evCons, kelly: kel, unc: u, push, trivial,
+        eligible: price >= info.minOdds && price <= info.maxOdds && m.p >= info.minP && !incoherent && !trivial,
         suspicious: incoherent || ev > (SUSPECT[m.group] || SUSPECT.def),
         incoherent, mktFair: ci ? ci.fair : null,
       });
@@ -2292,10 +2312,11 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     return rows;
   };
 
-  /* best rows with distinct (non conflicting) families */
-  function pickDistinct(rows, n) {
+  /* best rows with distinct (non conflicting) families; score = the ranking key (conservative edge in value mode, conservative probability in probable mode) */
+  function pickDistinct(rows, n, score) {
     const out = [];
-    for (const r of rows.slice().sort((a, b) => b.evCons - a.evCons)) {
+    score = score || ((r) => r.evCons);
+    for (const r of rows.slice().sort((a, b) => score(b) - score(a))) {
       if (out.some((x) => conflicts(x.fam, r.fam))) continue;
       out.push(r);
       if (out.length >= n) break;
@@ -2381,7 +2402,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
       if (!b) return;
       if (info.coh && info.coh.bad.has(l.key)) return;     // a price that does not agree with the market is never used as a leg
       const p = count([col.bits[k]]) / n;
-      if (p < 0.3 || p > 0.95) return;
+      if (p < 0.4 || p > 0.85) return;     // a leg must say something: neither a long shot nor a near-certainty used as padding (Under 4.5, Over 0.5 ...)
       cand.push({ k, key: l.key, fam: l.fam, grp, p, price: ref(b), lab: l.lab(info.names) });
     });
     const out = [];
@@ -2419,16 +2440,26 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
         consider([a, b, c]);
       }
     }
-    out.sort((x, y) => y.evEst - x.evEst);
-    // keep a varied top: no two builders with the same set of legs minus one
-    const keep = [];
-    for (const r of out) {
-      // skip a builder that shares all but one leg with an already kept one (near duplicate)
-      if (keep.some((x) => x.legs.filter((l) => r.legs.some((q) => q.key === l.key)).length >= Math.min(x.legs.length, r.legs.length))) continue;
-      keep.push(r);
-      if (keep.length >= 8) break;
+    // keep a varied top: no builder that contains (or is contained in) an already kept one
+    const varied = (list) => {
+      const keep = [];
+      for (const r of list) {
+        if (keep.some((x) => x.legs.filter((l) => r.legs.some((q) => q.key === l.key)).length >= Math.min(x.legs.length, r.legs.length))) continue;
+        keep.push(r);
+        if (keep.length >= 8) break;
+      }
+      return keep;
+    };
+    // two shortlists: the best by (assumed) edge — for the «value» mode — and the most probable ones with a non-negative edge — for the «probable» mode
+    const byEdge = varied(out.slice().sort((x, y) => y.evEst - x.evEst));
+    const byProb = varied(out.filter((r) => r.evEst >= 0).sort((x, y) => y.pCons - x.pCons));
+    const seen = new Set(), res = [];
+    for (const r of byEdge.concat(byProb)) {
+      const sig = r.legs.map((l) => l.key).sort().join('+');
+      if (seen.has(sig)) continue;
+      seen.add(sig); res.push(r);
     }
-    return keep;
+    return res;
   };
 
   // ===================================================== one match
@@ -2537,32 +2568,44 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
   const byEvCons = (a, b) => b.evCons - a.evCons;
   const fk = (p, odds) => { const f = (p * odds - 1) / (odds - 1); return f > 0 ? f : 0; };
 
-  /* matches: records from SC.run (or restored). o: {minEdge, bankroll, profile, en:{goals,cards,corners,combos,parlay}} */
+  /* matches: records from SC.run (or restored). o: {mode: 'prob' | 'value', minEdge, bankroll, profile, en:{goals,cards,corners,combos,parlay}}
+     mode 'prob' (default): most probable realistic bets, edge only has to be >= minEdge (default 0) and not absurdly high (see SC.PROB);
+     mode 'value': the old ranking by conservative edge. */
   SC.compile = function (matches, o) {
-    o = Object.assign({ minEdge: 0.03, bankroll: 300, profile: 'bal', perMatch: 2, minLegP: 0.35, minCompl: 0.4 }, o || {});
+    o = Object.assign({ mode: 'prob', bankroll: 300, profile: 'bal', perMatch: 2, minLegP: 0.35, minCompl: 0.4 }, o || {});
+    if (o.mode !== 'value') o.mode = 'prob';
+    if (!(o.minEdge >= 0)) o.minEdge = o.mode === 'prob' ? 0 : 0.03;
     o.en = Object.assign({ goals: true, cards: true, corners: true, combos: true, parlay: true }, o.en || {});
+    const PB = o.mode === 'prob', P = SC.PROB;
+    const score = PB ? (r) => r.pCons : (r) => r.evCons;                       // ranking key of singles / legs
+    const bySc = (a, b) => score(b) - score(a);
     const ok = matches.filter((m) => m.status === 'ok' && !m.noOdds);
     const tag = (r, m) => Object.assign({}, r, { mid: m.fix.id, ts: m.fix.ts, match: `${m.fix.home.name} – ${m.fix.away.name}`, league: m.fix.league.name, compl: m.completeness, lineups: m.lineups, lowData: m.completeness < o.minCompl, marketLed: !!m.marketLed });
     const singles = [], suspicious = [], priced = [], pool = [], bbAll = [];
     for (const m of ok) {
       const enabled = (m.rows || []).filter((r) => o.en[toggleOf(r.group)]);
-      const rows = enabled.filter((r) => r.eligible);
-      const val = rows.filter((r) => r.ev >= o.minEdge && r.evCons > 0);
-      suspicious.push(...val.filter((r) => r.suspicious).map((r) => tag(r, m)));
-      // quotes that disagree with the market's own 1X2 are listed as suspicious (never used), so the user sees what was thrown away
+      const rows = enabled.filter((r) => r.eligible && !r.trivial);
+      const val = rows.filter((r) => (PB ? r.p >= (r.group === 'combo' ? P.minComboP : P.minP) && r.ev >= o.minEdge : r.ev >= o.minEdge && r.evCons > 0));
+      // too good to be true: listed (never used) so the user sees what was thrown away
+      suspicious.push(...val.filter((r) => r.suspicious || (PB && r.ev > P.maxEdge)).map((r) => tag(r, m)));
+      // quotes that disagree with the market's own 1X2 are listed as suspicious (never used)
       suspicious.push(...enabled.filter((r) => r.incoherent && r.price >= SC.MIN_SINGLE && r.ev >= o.minEdge).map((r) => tag(r, m)));
-      const good = val.filter((r) => !r.suspicious);
-      pickDistinct(good.filter((r) => r.group !== 'combo'), o.perMatch).forEach((r) => singles.push(tag(r, m)));
-      pickDistinct(good.filter((r) => r.group === 'combo'), 1).forEach((r) => priced.push(tag(r, m)));
+      const good = val.filter((r) => !r.suspicious && !(PB && r.ev > P.maxEdge));
+      pickDistinct(good.filter((r) => r.group !== 'combo'), o.perMatch, score).forEach((r) => singles.push(tag(r, m)));
+      pickDistinct(good.filter((r) => r.group === 'combo'), 1, score).forEach((r) => priced.push(tag(r, m)));
       if (m.completeness >= o.minCompl) {
-        pickDistinct(rows.filter((r) => r.group !== 'combo' && r.price >= SC.MIN_LEG && r.evCons >= 0 && r.pCons >= o.minLegP && !r.suspicious), 2).forEach((r) => pool.push(tag(r, m)));
+        const legOk = PB
+          ? (r) => r.group !== 'combo' && r.price >= SC.MIN_LEG && r.p >= P.minLegP && r.ev >= o.minEdge && r.ev <= P.maxEdge && !r.suspicious
+          : (r) => r.group !== 'combo' && r.price >= SC.MIN_LEG && r.evCons >= 0 && r.pCons >= o.minLegP && !r.suspicious;
+        pickDistinct(rows.filter(legOk), 2, score).forEach((r) => pool.push(tag(r, m)));
         if (o.en.combos) {
-          (m.builders || []).filter((b) => b.evEst > 0 && b.groups.every((g) => o.en[g]) && b.p >= 0.18).slice(0, 2)
+          (m.builders || []).filter((b) => b.groups.every((g) => o.en[g]) && (PB ? b.p >= P.minBuilderP && b.evEst >= 0 : b.evEst > 0 && b.p >= 0.18))
+            .sort(PB ? (a, b) => b.pCons - a.pCons : (a, b) => b.evEst - a.evEst).slice(0, 2)
             .forEach((b) => bbAll.push(Object.assign({}, b, { mid: m.fix.id, ts: m.fix.ts, match: `${m.fix.home.name} – ${m.fix.away.name}`, league: m.fix.league.name, lineups: m.lineups, compl: m.completeness })));
         }
       }
     }
-    singles.sort(byEvCons); priced.sort(byEvCons); bbAll.sort((a, b) => b.evEst - a.evEst);
+    singles.sort(bySc); priced.sort(bySc);
 
     // parlays: exactly 3 different matches, each leg >= 1.40
     const parlays = [];
@@ -2570,15 +2613,16 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
       const byM = new Map();
       pool.forEach((l) => { if (!byM.has(l.mid)) byM.set(l.mid, []); byM.get(l.mid).push(l); });
       const mids = [...byM.keys()], all = [];
+      const maxOdds = PB ? P.maxParlayOdds : 14;
       for (let i = 0; i < mids.length; i++) for (let j = i + 1; j < mids.length; j++) for (let k = j + 1; k < mids.length; k++)
         for (const a of byM.get(mids[i])) for (const b of byM.get(mids[j])) for (const c of byM.get(mids[k])) {
           const odds = a.price * b.price * c.price, p = a.p * b.p * c.p, pc = a.pCons * b.pCons * c.pCons;
-          if (odds > 14) continue;
+          if (odds > maxOdds) continue;
           all.push({ legs: [a, b, c], odds, p, pCons: pc, ev: p * odds - 1, evCons: pc * odds - 1 });
         }
-      all.sort(byEvCons);
+      all.sort(PB ? (a, b) => b.pCons - a.pCons : byEvCons);   // probable mode: the parlay most likely to come through first
       for (const c of all) {
-        if (c.evCons <= 0) break;
+        if (PB ? c.ev < 0 : c.evCons <= 0) { if (PB) continue; break; }
         const share = (x) => x.legs.filter((l) => c.legs.some((q) => q.mid === l.mid && q.key === l.key)).length;
         if (parlays.some((x) => share(x) > 1)) continue;
         parlays.push(c);
@@ -2591,19 +2635,21 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const seenM = new Set();
     const bbCands = priced.map((r) => ({ kind: 'real', mid: r.mid, ts: r.ts, match: r.match, league: r.league, label: r.label, p: r.p, pCons: r.pCons, price: r.price, fair: r.fair, minOdds: r.minOdds, evCons: r.evCons, ev: r.ev, lineups: r.lineups, book: r.book, bestOdds: r.bestOdds, lowData: r.lowData }))
       .concat(bbAll.map((b) => ({ kind: 'bb', mid: b.mid, ts: b.ts, match: b.match, league: b.league, legs: b.legs, p: b.p, pCons: b.pCons, price: b.est, fair: b.fair, minOdds: b.minOdds, naive: b.naive, evCons: b.evEst, ev: b.p * b.est - 1, lineups: b.lineups, indep: b.indep })));
-    bbCands.sort(byEvCons);
+    bbCands.sort(bySc);
     for (const b of bbCands) { if (seenM.has(b.mid)) continue; seenM.add(b.mid); builders.push(b); if (builders.length >= 5) break; }
 
     // allocation of the whole bankroll. One match may sit in at most 3 of the chosen bets (less correlated exposure).
     const items = [];
+    // probable mode: stakes follow the probability (a likelier bet gets more); value mode: Kelly fraction
+    const wOf = PB ? (pc) => Math.pow(Math.max(pc, 0.05), 3) : (pc, odds) => clamp(fk(pc, odds), 0.003, 0.25);
     const usedM = new Set(), expo = new Map();
     const can = (mids) => mids.every((m) => (expo.get(m) || 0) < 3);
     const take = (mids) => mids.forEach((m) => expo.set(m, (expo.get(m) || 0) + 1));
-    for (const s of singles) { if (items.filter((x) => x.bucket === 'single').length >= 5) break; if (usedM.has(s.mid) || s.lowData) continue; usedM.add(s.mid); take([s.mid]); items.push({ bucket: 'single', kind: 'single', ref: s, w: clamp(fk(s.pCons, s.price), 0.003, 0.25) }); }
+    for (const s of singles) { if (items.filter((x) => x.bucket === 'single').length >= 5) break; if (usedM.has(s.mid) || s.lowData) continue; usedM.add(s.mid); take([s.mid]); items.push({ bucket: 'single', kind: 'single', ref: s, w: wOf(s.pCons, s.price) }); }
     let np = 0;
-    for (const p of parlays) { if (np >= 2) break; const mids = p.legs.map((l) => l.mid); if (!can(mids)) continue; take(mids); np++; items.push({ bucket: 'parlay', kind: 'parlay', ref: p, w: clamp(fk(p.pCons, p.odds), 0.003, 0.25) }); }
+    for (const p of parlays) { if (np >= 2) break; const mids = p.legs.map((l) => l.mid); if (!can(mids)) continue; take(mids); np++; items.push({ bucket: 'parlay', kind: 'parlay', ref: p, w: wOf(p.pCons, p.odds) }); }
     let nb = 0;
-    for (const b of builders) { if (nb >= 2) break; if (b.lowData || !can([b.mid])) continue; take([b.mid]); nb++; items.push({ bucket: 'builder', kind: b.kind, ref: b, w: clamp(fk(b.pCons, b.price), 0.003, 0.25) }); }
+    for (const b of builders) { if (nb >= 2) break; if (b.lowData || !can([b.mid])) continue; take([b.mid]); nb++; items.push({ bucket: 'builder', kind: b.kind, ref: b, w: wOf(b.pCons, b.price) }); }
     // Kelly fractions are noisy when the model is slightly off, so the split inside a bucket is flattened towards equal stakes
     for (const bk of ['single', 'parlay', 'builder']) {
       const g = items.filter((x) => x.bucket === bk);
@@ -2613,15 +2659,15 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     }
     const prof = SC.PROFILES[o.profile] || SC.PROFILES.bal;
     const plan = SC.allocate(items, o.bankroll, { single: prof.single, parlay: prof.parlay, builder: prof.builder }, 5);
-    const stats = { bets: plan.length, evCons: 0, ev: 0, top: 0 };
+    const stats = { bets: plan.length, evCons: 0, ev: 0, top: 0, expHits: 0 };
     for (const it of plan) {
       const r = it.ref, odds = it.kind === 'parlay' ? r.odds : r.price, pc = r.pCons, p = r.p;
       it.odds = odds; it.ret = it.stake * odds;
       it.evUsd = it.stake * (pc * odds - 1);
-      stats.evCons += it.evUsd; stats.ev += it.stake * (p * odds - 1); stats.top = Math.max(stats.top, it.stake);
+      stats.evCons += it.evUsd; stats.ev += it.stake * (p * odds - 1); stats.top = Math.max(stats.top, it.stake); stats.expHits += p;
     }
     plan.sort((a, b) => ({ single: 0, parlay: 1, builder: 2 }[a.bucket] - { single: 0, parlay: 1, builder: 2 }[b.bucket]) || b.stake - a.stake);
-    return { singles, parlays, builders, suspicious, plan, stats, bankroll: o.bankroll, profile: o.profile, counts: { ok: ok.length, noOdds: matches.filter((m) => m.status === 'ok' && m.noOdds).length, skipped: matches.filter((m) => m.status !== 'ok').length } };
+    return { singles, parlays, builders, suspicious, plan, stats, bankroll: o.bankroll, profile: o.profile, mode: o.mode, counts: { ok: ok.length, noOdds: matches.filter((m) => m.status === 'ok' && m.noOdds).length, skipped: matches.filter((m) => m.status !== 'ok').length } };
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = SC; else root.SimScan = SC;
@@ -2842,19 +2888,23 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const have = Object.keys(best).length > 0;
     const coh = MK.coherence(S, ctx.odds && ctx.odds.consensus, mk, best, { tol: 0.15, price: (x) => (x.n >= 3 ? x.med : x.o) });
     const rows = MK.evaluate(mk, best, { minEdge: cfg.minEdge / 100, bankroll: cfg.bankroll, unc: b.unc, coh, bad: coh.bad });
-    const value = rows.filter((r) => r.value).slice(0, 8);
-    let h = '<h2>Value σε σχέση με τις αποδόσεις</h2>';
+    const PB = scanCfg.mode !== 'value', SCN = window.SimScan, floor = scanEdge();
+    // probable mode: the most likely bets that are realistic (a real line, price >= 1.30) and not priced below the model's fair price; ranked by probability
+    const value = PB
+      ? (() => { const seen = new Set(), out = []; for (const r of rows.filter((x) => x.eligible && !SCN.isTrivial(x.key) && !x.key.startsWith('cmb:') && x.p >= SCN.PROB.minP && x.ev >= floor && x.ev <= SCN.PROB.maxEdge).sort((x, y) => y.p - x.p)) { const f = FAM(r.key); if (seen.has(f)) continue; seen.add(f); out.push(r); if (out.length >= 6) break; } return out; })()
+      : rows.filter((r) => r.value).slice(0, 8);
+    let h = PB ? '<h2>Πιθανότερα στοιχήματα με απόδοση</h2>' : '<h2>Value σε σχέση με τις αποδόσεις</h2>';
     if (coh.bad.size) h += `<div class="sx-lowdata"><b>⚠ Αγνοήθηκαν τιμές που δεν συμβαδίζουν με την αγορά</b> (πιθανό λάθος γραμμής ή παλιά τιμή — έλεγξέ τες χειροκίνητα στο bookmaker πριν παίξεις):<ul>${[...coh.bad].map((k) => { const r = rows.find((x) => x.key === k), ci = coh.info[k]; return `<li>${esc(r ? r.label : k)} @ ${od(ci.price)} — η αγορά 1Χ2 δίνει δίκαιη απόδοση περίπου ${od(ci.fair)}</li>`; }).join('')}</ul></div>`;
     if (!have) h += '<p class="muted">Οι αποδόσεις δεν έχουν ανοίξει ακόμα για αυτόν τον αγώνα. Δες παρακάτω τις πιθανότερες αγορές με την ελάχιστη απόδοση που αξίζει.</p>';
-    else if (!value.length) h += `<p class="muted">Δεν βρέθηκε αγορά με απόδοση ≥ 1.30 και edge ≥ ${cfg.minEdge}% μετά από το περιθώριο ασφαλείας (${pc(b.unc, 1)} στην πιθανότητα). Και αυτή είναι απάντηση: δεν έχει κάθε αγώνας value.</p>`;
+    else if (!value.length) h += PB ? '<p class="muted">Δεν βρέθηκε αγορά με πιθανότητα ≥ 50%, απόδοση ≥ 1.30 και τιμή όχι κάτω από τη δίκαιη. Και αυτή είναι απάντηση: δεν έχει κάθε αγώνας καλή πρόταση.</p>' : `<p class="muted">Δεν βρέθηκε αγορά με απόδοση ≥ 1.30 και edge ≥ ${cfg.minEdge}% μετά από το περιθώριο ασφαλείας (${pc(b.unc, 1)} στην πιθανότητα). Και αυτή είναι απάντηση: δεν έχει κάθε αγώνας value.</p>`;
     for (const r of value) {
       h += `<div class="pick value"><div class="big">${esc(r.label)} @ ${od(r.odds)} <span class="muted">(${esc(r.book)})</span></div>
-        <div class="m">Μοντέλο <b>${pc(r.p, 1)}</b> · δίκαιη απόδοση ${od(r.fair)} · edge <b class="pos">+${(r.ev * 100).toFixed(1)}%</b> · ελάχιστη απόδοση που αξίζει ${od(r.minOdds)} · μέση αγορά ${od(r.med)} (${r.nBooks} bookmakers)</div>
-        <div class="m">Προτεινόμενο μέγεθος (¼ Kelly, όριο 3%): <b>${(r.kellyPct * 100).toFixed(1)}%</b> του bankroll${cfg.bankroll ? ' ≈ <b>$' + (r.kellyPct * cfg.bankroll).toFixed(2) + '</b>' : ''} — μαθηματικός υπολογισμός, την απόφαση την παίρνεις εσύ.</div>
+        <div class="m">${PB ? 'Πιθανότητα' : 'Μοντέλο'} <b>${pc(r.p, 1)}</b> · δίκαιη απόδοση ${od(r.fair)} · edge <b class="pos">+${(r.ev * 100).toFixed(1)}%</b> · ελάχιστη απόδοση που αξίζει ${od(r.minOdds)} · μέση αγορά ${od(r.med)} (${r.nBooks} bookmakers)</div>
+        ${PB ? '' : `<div class="m">Προτεινόμενο μέγεθος (¼ Kelly, όριο 3%): <b>${(r.kellyPct * 100).toFixed(1)}%</b> του bankroll${cfg.bankroll ? ' ≈ <b>$' + (r.kellyPct * cfg.bankroll).toFixed(2) + '</b>' : ''} — μαθηματικός υπολογισμός, την απόφαση την παίρνεις εσύ.</div>`}
         ${r.ev > 0.2 ? '<div class="m neg">⚠ Πολύ μεγάλο edge (&gt;20%). Συνήθως σημαίνει ότι το μοντέλο δεν ξέρει κάτι (τραυματίας, αλλαγή ενδεκάδας, παλιά απόδοση) και όχι ότι η αγορά έκανε λάθος. Έλεγξε τα νέα και την ενδεκάδα πριν το εμπιστευτείς.</div>' : ''}</div>`;
     }
     // probable markets with the minimum playable odds
-    const cand = mk.filter((m) => m.p >= 0.55 && m.p <= 0.93 && !/^(tg|oe|fg:none|late|g30|co:1x2|dnb)/.test(m.key) && !/^htft/.test(m.key)).sort((x, y) => y.p - x.p);
+    const cand = mk.filter((m) => m.p >= 0.55 && m.p <= (PB ? 0.80 : 0.93) && !(PB && SCN.isTrivial(m.key)) && !/^(tg|oe|fg:none|late|g30|co:1x2|dnb)/.test(m.key) && !/^htft/.test(m.key)).sort((x, y) => y.p - x.p);
     const seen = new Set(), pick = [];
     for (const m of cand) { const fam = FAM(m.key); if (seen.has(fam)) continue; seen.add(fam); pick.push(m); if (pick.length >= 8) break; }
     h += '<h2 style="margin-top:14px">Πιθανότερες αγορές &amp; ελάχιστη απόδοση</h2>';
@@ -2865,7 +2915,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
       return `<div class="pick"><div class="big">${esc(m.label)} — ${pc(m.p)}</div><div class="m">Δίκαιη ${od(fair)} · αξίζει μόνο από <b>${od(minO)}</b>${minO < 1.3 ? ' (κάτω από 1.30)' : ''} ${verdict}</div></div>`;
     }).join('') || '<p class="muted">Καμία αγορά δεν ξεχωρίζει καθαρά.</p>';
     // same-match combos with odds
-    const cmb = rows.filter((r) => r.key.startsWith('cmb:') && r.eligible).sort((x, y) => y.ev - x.ev).slice(0, 4);
+    const cmb = (PB ? rows.filter((r) => r.key.startsWith('cmb:') && r.eligible && r.p >= SCN.PROB.minComboP && r.ev >= floor && r.ev <= SCN.PROB.maxEdge).sort((x, y) => y.p - x.p) : rows.filter((r) => r.key.startsWith('cmb:') && r.eligible).sort((x, y) => y.ev - x.ev)).slice(0, 4);
     if (cmb.length) {
       h += '<h2 style="margin-top:14px">Συνδυαστικά ίδιου αγώνα (με τη συσχέτιση του μοντέλου)</h2>' + cmb.map((r) => `<div class="pick"><div class="big">${esc(r.label)} @ ${od(r.odds)}</div><div class="m">Μοντέλο ${pc(r.p, 1)} · δίκαιη ${od(r.fair)} · ${r.ev >= 0 ? '<span class="pos">+' : '<span class="neg">'}${(r.ev * 100).toFixed(1)}%</span></div></div>`).join('');
     }
@@ -3026,7 +3076,10 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
   }
 
   // ------------------------------------------------ day scanner: every match of the day that has not started → best bets
-  const scanCfg = Object.assign({ depth: 'auto', scope: null, bank: 300, profile: 'bal', minEdge: 3 }, cfg.scan || {});
+  const scanCfg = Object.assign({ depth: 'auto', scope: null, bank: 300, profile: 'bal', minEdge: 3, minEdgeP: 0, mode: 'prob' }, cfg.scan || {});
+  if (scanCfg.mode !== 'value') scanCfg.mode = 'prob';
+  /* mode 'prob' (default) = the most probable realistic bets; mode 'value' = the biggest edge. Each mode keeps its own minimum edge. */
+  const scanEdge = () => Math.max(0, Number(scanCfg.mode === 'value' ? scanCfg.minEdge : scanCfg.minEdgeP) || 0) / 100;
   scanCfg.en = Object.assign({ goals: true, cards: true, corners: true, combos: true, parlay: true }, scanCfg.en || {});
   const sc = { open: false, view: 'setup', busy: false, cancel: false, recs: null, out: null, at: 0, depth: null, day: null, err: null };
   const saveScanCfg = () => { cfg.scan = scanCfg; save('lbd_sim', cfg); };
@@ -3071,7 +3124,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const now = Date.now();
     const live = (sc.recs || []).filter((r) => !(r.fix && r.fix.ts && r.fix.ts < now));
     try {
-      sc.out = window.SimScan.compile(live, { minEdge: scanCfg.minEdge / 100, bankroll: scanCfg.bank, profile: scanCfg.profile, en: scanCfg.en });
+      sc.out = window.SimScan.compile(live, { mode: scanCfg.mode, minEdge: scanEdge(), bankroll: scanCfg.bank, profile: scanCfg.profile, en: scanCfg.en });
       sc.out.started = (sc.recs || []).length - live.length;
     } catch (e) { sc.out = null; sc.err = 'Σφάλμα υπολογισμού: ' + e.message; }
   }
@@ -3112,14 +3165,15 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     return `<div class="sc-opts">
         <label>Ποσό προς μοίρασμα ($)<input type="number" id="scBank" min="10" step="10" value="${scanCfg.bank}"></label>
         <label>Προφίλ μοιράσματος<select id="scProf">${Object.entries(P).map(([k, v]) => `<option value="${k}"${scanCfg.profile === k ? ' selected' : ''}>${v.name} — μονά ${Math.round(v.single * 100)}% · παρολί ${Math.round(v.parlay * 100)}% · builder ${Math.round(v.builder * 100)}%</option>`).join('')}</select></label>
-        <label>Ελάχιστο edge (%)<input type="number" id="scEdge" min="0" max="20" step="0.5" value="${scanCfg.minEdge}"></label>
+        <label>Τι να διαλέγει${`<select id="scMode"><option value="prob"${scanCfg.mode === 'prob' ? ' selected' : ''}>Τα πιθανότερα (ρεαλιστικές γραμμές)</option><option value="value"${scanCfg.mode === 'value' ? ' selected' : ''}>Το μεγαλύτερο value (edge)</option></select>`}</label>
+        <label>${scanCfg.mode === 'value' ? 'Ελάχιστο edge (%)' : 'Ελάχιστο edge (%) · 0 = όχι κάτω από τη δίκαιη τιμή'}<input type="number" id="scEdge" min="0" max="20" step="0.5" value="${scanCfg.mode === 'value' ? scanCfg.minEdge : scanCfg.minEdgeP}"></label>
       </div>
       <div class="sc-chks">${chk('goals', 'Γκολ &amp; αποτέλεσμα')}${chk('cards', 'Κάρτες')}${chk('corners', 'Κόρνερ')}${chk('combos', 'Συνδυαστικά &amp; bet builder')}${chk('parlay', 'Παρολί 3 αγώνων')}</div>`;
   }
   function scanSetupHtml() {
     const pl = scanPlan();
     const sel = (id, cur, opts) => `<select id="${id}">${opts.map(([v, t]) => `<option value="${v}"${cur === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
-    let h = `<p class="note" style="margin-top:0">Τρέχει την προσομοίωση σε ΟΛΟΥΣ τους αγώνες (${dayLabel(st.day)}) που δεν έχουν ξεκινήσει, φέρνει ενδεκάδες &amp; αποδόσεις και διαλέγει μονά, παρολί 3 αγώνων και bet builder που έχουν αξία, με το ποσό χωρισμένο στα δολάρια που ορίζεις. Δεν στοιχηματίζει τίποτα· οι προτάσεις είναι στατιστική εκτίμηση.</p>
+    let h = `<p class="note" style="margin-top:0">Τρέχει την προσομοίωση σε ΟΛΟΥΣ τους αγώνες (${dayLabel(st.day)}) που δεν έχουν ξεκινήσει, φέρνει ενδεκάδες &amp; αποδόσεις και διαλέγει μονά, παρολί 3 αγώνων και bet builder με τη μεγαλύτερη πιθανότητα να βγουν (μόνο ρεαλιστικές γραμμές και τιμές που δεν είναι κάτω από τη δίκαιη), με το ποσό χωρισμένο στα δολάρια που ορίζεις. Δεν στοιχηματίζει τίποτα· οι προτάσεις είναι στατιστική εκτίμηση.</p>
       <div class="sc-opts">
         <label>Αγώνες${sel('scScope', scanScope(), [['big', 'Μεγάλες λίγκες'], ['all', 'Όλες οι λίγκες'], ['star', '★ Αγαπημένα']])}</label>
         <label>Βάθος δεδομένων${sel('scDepth', scanCfg.depth, [['auto', 'Αυτόματο (ανάλογα με τις κλήσεις που έμειναν)'], ['light', 'Ελαφρύ (~8 κλήσεις/αγώνα) — μόνο γκολ'], ['normal', 'Κανονικό (~18) — γκολ + κάρτες'], ['deep', 'Βαθύ (~44) — γκολ + κάρτες + κόρνερ']])}</label>
@@ -3134,7 +3188,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
   function scanListHtml() {
     const ic = { wait: '⏸', run: '⏳', ok: '✅', skip: '➖', err: '⚠️' };
     return (sc.recs || []).map((r) => {
-      const note = r.status === 'ok' ? (r.noOdds ? 'χωρίς αποδόσεις ακόμα' : `${(r.rows || []).filter((x) => x.eligible && x.ev >= scanCfg.minEdge / 100 && x.evCons > 0).length} υποψήφια value`) : r.note || '';
+      const note = r.status === 'ok' ? (r.noOdds ? 'χωρίς αποδόσεις ακόμα' : `${(r.rows || []).filter((x) => window.SimScan.passSingle(x, { mode: scanCfg.mode, minEdge: scanEdge() })).length} υποψήφια ${scanCfg.mode === 'value' ? 'value' : 'πιθανά'}`) : r.note || '';
       return `<div class="sx-task ${r.status === 'err' ? 'fail' : r.status === 'skip' ? 'skip' : ''}"><span>${ic[r.status] || ''}</span><span>${hhmm(r.fix.ts)} ${esc(r.fix.home.name)} – ${esc(r.fix.away.name)}</span><span class="muted">${esc(note)}</span></div>`;
     }).join('');
   }
@@ -3158,7 +3212,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const r = it.ref;
     return `<div class="sc-bet"><div class="hd"><b>${esc(r.match)}</b><span class="sc-stake">${usd(it.stake)}</span></div>
       <div class="big">${esc(r.label)} @ ${od(r.price)} ${grpTag(r.group)}</div>
-      <div class="m">${hhmm(r.ts)} · ${esc(r.league)} · μοντέλο <b>${pc(r.p)}</b> · δίκαιη ${od(r.fair)} · edge <b class="pos">${signed(r.ev)}</b> <span class="muted">(συντηρητικά ${signed(r.evCons)})</span></div>
+      <div class="m">${hhmm(r.ts)} · ${esc(r.league)} · πιθανότητα <b>${pc(r.p)}</b> · δίκαιη ${od(r.fair)} · edge <b class="pos">${signed(r.ev)}</b> <span class="muted">(συντηρητικά ${signed(r.evCons)})</span></div>
       <div class="m">Παίξε μόνο αν η απόδοση είναι ≥ <b>${od(Math.max(r.minOdds, 1.3))}</b>${r.bestOdds > r.price + 0.005 ? ` · καλύτερη στην αγορά ${od(r.bestOdds)} (${esc(r.book)})` : ''} · αν κερδίσει ≈ <b>${usd(it.stake * r.price)}</b> ${luTag(r.lineups)}${r.group === 'corners' || r.group === 'cards' ? ' <span class="muted">· μόνο από το μοντέλο, μικρότερη βεβαιότητα</span>' : ''}</div>
       <button class="mini" data-sx="scanpick" data-id="${r.mid}">Ανάλυση αγώνα ▶</button></div>`;
   }
@@ -3174,7 +3228,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     if (it.kind === 'real') {
       return `<div class="sc-bet bb"><div class="hd"><b>${esc(r.match)}</b><span class="sc-stake">${usd(it.stake)}</span></div>
         <div class="big">${esc(r.label)} @ ${od(r.price)} ${grpTag('combo')}</div>
-        <div class="m">${hhmm(r.ts)} · ${esc(r.league)} · μοντέλο <b>${pc(r.p)}</b> · δίκαιη ${od(r.fair)} · edge <b class="pos">${signed(r.ev)}</b> <span class="muted">(συντηρητικά ${signed(r.evCons)})</span></div>
+        <div class="m">${hhmm(r.ts)} · ${esc(r.league)} · πιθανότητα <b>${pc(r.p)}</b> · δίκαιη ${od(r.fair)} · edge <b class="pos">${signed(r.ev)}</b> <span class="muted">(συντηρητικά ${signed(r.evCons)})</span></div>
         <div class="m">Έτοιμη αγορά με τιμή από bookmakers. Παίξε μόνο αν ≥ <b>${od(Math.max(r.minOdds, 1.3))}</b> · αν κερδίσει ≈ <b>${usd(it.stake * r.price)}</b> ${luTag(r.lineups)}</div>
         <button class="mini" data-sx="scanpick" data-id="${r.mid}">Ανάλυση αγώνα ▶</button></div>`;
     }
@@ -3193,11 +3247,11 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const plan = o.plan;
     h += `<h2 style="margin-top:12px">Πλάνο μοιράσματος · ${usd(o.bankroll)}</h2>`;
     if (!plan.length) {
-      h += `<p class="muted">Δεν βρέθηκε αρκετά στοιχήματα με αξία (edge ≥ ${scanCfg.minEdge}% μετά το περιθώριο ασφαλείας, απόδοση ≥ 1.30) για να χωριστεί το ποσό. Αυτή είναι απάντηση: δεν έχει κάθε ημέρα value. Μπορείς να χαμηλώσεις το «Ελάχιστο edge» ή να ξανατρέξεις όταν βγουν οι ενδεκάδες.</p>`;
+      h += `<p class="muted">${o.mode === 'value' ? `Δεν βρέθηκε αρκετά στοιχήματα με αξία (edge ≥ ${scanCfg.minEdge}% μετά το περιθώριο ασφαλείας, απόδοση ≥ 1.30) για να χωριστεί το ποσό.` : 'Δεν βρέθηκαν αρκετά πιθανά στοιχήματα (πιθανότητα ≥ 50%, απόδοση ≥ 1.30, τιμή όχι κάτω από τη δίκαιη) για να χωριστεί το ποσό.'} Αυτή είναι απάντηση: δεν έχει κάθε ημέρα καλές προτάσεις. Μπορείς να ξανατρέξεις όταν βγουν οι ενδεκάδες και οι αποδόσεις.</p>`;
     } else {
       const total = plan.reduce((s, x) => s + x.stake, 0);
-      h += `<div class="sx-kv"><div><span>Σύνολο στοιχημάτων</span><b>${usd(total)} σε ${plan.length}</b></div><div><span>Αναμενόμενο κέρδος (μοντέλο, συντηρητικά)</span><b class="${o.stats.evCons >= 0 ? 'pos' : 'neg'}">${o.stats.evCons >= 0 ? '+' : '−'}${usd(Math.abs(o.stats.evCons))}</b></div><div><span>Μεγαλύτερο ποσό σε ένα στοίχημα</span><b>${usd(o.stats.top)}</b></div></div>`;
-      if (o.stats.top > 0.4 * o.bankroll) h += `<p class="neg sx-small">⚠ Πάνω από το 40% του ποσού πάει σε ένα στοίχημα επειδή υπάρχουν λίγες προτάσεις με value. Αν θες πιο ισορροπημένο, χαμήλωσε το «Ελάχιστο edge».</p>`;
+      h += `<div class="sx-kv"><div><span>Σύνολο στοιχημάτων</span><b>${usd(total)} σε ${plan.length}</b></div>${o.mode === 'prob' ? `<div><span>Αναμενόμενα που βγαίνουν (μοντέλο)</span><b>${o.stats.expHits.toFixed(1)} από ${plan.length}</b></div>` : ''}<div><span>Αναμενόμενο κέρδος (μοντέλο${o.mode === 'prob' ? '' : ', συντηρητικά'})</span><b class="${(o.mode === 'prob' ? o.stats.ev : o.stats.evCons) >= 0 ? 'pos' : 'neg'}">${(o.mode === 'prob' ? o.stats.ev : o.stats.evCons) >= 0 ? '+' : '−'}${usd(Math.abs(o.mode === 'prob' ? o.stats.ev : o.stats.evCons))}</b></div><div><span>Μεγαλύτερο ποσό σε ένα στοίχημα</span><b>${usd(o.stats.top)}</b></div></div>`;
+      if (o.stats.top > 0.4 * o.bankroll) h += `<p class="neg sx-small">⚠ Πάνω από το 40% του ποσού πάει σε ένα στοίχημα επειδή υπάρχουν λίγες προτάσεις που περνούν τα φίλτρα. Ξανατρέξε όταν βγουν περισσότερες αποδόσεις/ενδεκάδες.</p>`;
       for (const [bk, title, fn] of [['single', 'Μονά', betSingle], ['parlay', 'Παρολί', betParlay], ['builder', 'Bet builder (ίδιος αγώνας)', betBuilder]]) {
         const g = plan.filter((x) => x.bucket === bk);
         if (!g.length) continue;
@@ -3206,8 +3260,8 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     }
     const inPlan = new Set(plan.filter((x) => x.bucket === 'single').map((x) => x.ref.mid + '|' + x.ref.key));
     const rest = o.singles.filter((s) => !inPlan.has(s.mid + '|' + s.key));
-    if (rest.length) h += `<details class="sx-det"><summary><b>Άλλα μονά με value εκτός πλάνου</b> <span class="muted">(${rest.length})</span></summary>${rest.map((s) => `<div class="pick value"><div class="m"><b>${esc(s.match)}</b> · ${hhmm(s.ts)} ${grpTag(s.group)} ${s.lowData ? '<span class="tag low">χαμηλά δεδομένα</span>' : ''}</div><div class="big">${esc(s.label)} @ ${od(s.price)}</div><div class="m">μοντέλο ${pc(s.p)} · δίκαιη ${od(s.fair)} · edge ${signed(s.ev)} (συντηρητικά ${signed(s.evCons)}) · παίξε αν ≥ ${od(Math.max(s.minOdds, 1.3))}</div></div>`).join('')}</details>`;
-    if (o.suspicious.length) h += `<details class="sx-det"><summary><b>⚠ Ύποπτα value (πολύ μεγάλο edge)</b> <span class="muted">(${o.suspicious.length}) — δεν μπαίνουν στο πλάνο</span></summary>${o.suspicious.slice(0, 12).map((s) => `<div class="pick"><div class="m"><b>${esc(s.match)}</b> · ${esc(s.label)} @ ${od(s.price)} · μοντέλο ${pc(s.p)} · edge ${signed(s.ev)}${s.incoherent ? ` · <span class="neg">η τιμή δεν συμβαδίζει με την αγορά 1Χ2 (δίκαιη ~${od(s.mktFair)}) — πιθανό λάθος γραμμής</span>` : ''}</div></div>`).join('')}<p class="note">Edge τέτοιου μεγέθους συνήθως σημαίνει ότι το μοντέλο δεν ξέρει κάτι (τραυματίας, αλλαγή ενδεκάδας, παλιά τιμή) και όχι ότι η αγορά έκανε λάθος. Έλεγξε νέα/ενδεκάδα στην ανάλυση αγώνα.</p></details>`;
+    if (rest.length) h += `<details class="sx-det"><summary><b>${o.mode === 'value' ? 'Άλλα μονά με value εκτός πλάνου' : 'Άλλα πιθανά μονά εκτός πλάνου'}</b> <span class="muted">(${rest.length})</span></summary>${rest.map((s) => `<div class="pick value"><div class="m"><b>${esc(s.match)}</b> · ${hhmm(s.ts)} ${grpTag(s.group)} ${s.lowData ? '<span class="tag low">χαμηλά δεδομένα</span>' : ''}</div><div class="big">${esc(s.label)} @ ${od(s.price)}</div><div class="m">μοντέλο ${pc(s.p)} · δίκαιη ${od(s.fair)} · edge ${signed(s.ev)} (συντηρητικά ${signed(s.evCons)}) · παίξε αν ≥ ${od(Math.max(s.minOdds, 1.3))}</div></div>`).join('')}</details>`;
+    if (o.suspicious.length) h += `<details class="sx-det"><summary><b>⚠ Ύποπτα (πολύ μεγάλο edge ή τιμή εκτός αγοράς)</b> <span class="muted">(${o.suspicious.length}) — δεν μπαίνουν στο πλάνο</span></summary>${o.suspicious.slice(0, 12).map((s) => `<div class="pick"><div class="m"><b>${esc(s.match)}</b> · ${esc(s.label)} @ ${od(s.price)} · μοντέλο ${pc(s.p)} · edge ${signed(s.ev)}${s.incoherent ? ` · <span class="neg">η τιμή δεν συμβαδίζει με την αγορά 1Χ2 (δίκαιη ~${od(s.mktFair)}) — πιθανό λάθος γραμμής</span>` : ''}</div></div>`).join('')}<p class="note">Edge τέτοιου μεγέθους συνήθως σημαίνει ότι το μοντέλο δεν ξέρει κάτι (τραυματίας, αλλαγή ενδεκάδας, παλιά τιμή) και όχι ότι η αγορά έκανε λάθος. Έλεγξε νέα/ενδεκάδα στην ανάλυση αγώνα.</p></details>`;
     // overview of all scanned matches
     const rows = (sc.recs || []);
     h += `<details class="sx-det"><summary><b>Όλοι οι αγώνες της σάρωσης</b> <span class="muted">(${rows.length})</span></summary><div class="sx-scroll"><table class="sx-tbl"><thead><tr><th>Ώρα</th><th>Αγώνας</th><th>1/Χ/2</th><th>O2.5</th><th>GG</th><th>Κόρν.</th><th>Κάρτ.</th><th></th></tr></thead><tbody>${rows.map((r) => {
@@ -3227,7 +3281,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     if (!box) return;
     if (!sc.open) { box.innerHTML = ''; return; }
     const body = sc.view === 'run' ? scanRunHtml() : sc.view === 'res' ? scanResultHtml() : scanSetupHtml();
-    box.innerHTML = `<section class="card sc-box"><h2>🔎 Σάρωση ημέρας · καλύτερα στοιχήματα με value</h2>${body}</section>`;
+    box.innerHTML = `<section class="card sc-box"><h2>🔎 Σάρωση ημέρας · καλύτερα στοιχήματα</h2>${body}</section>`;
     if (sc.view === 'run') updateScanProgress();
   }
 
@@ -3291,7 +3345,8 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     else if (t.id === 'scDepth') { scanCfg.depth = t.value; saveScanCfg(); scheduleScan(); }
     else if (t.id === 'scBank') { scanCfg.bank = Math.max(10, Math.round(Number(t.value) || 300)); saveScanCfg(); if (sc.out) compileScan(); scheduleScan(); }
     else if (t.id === 'scProf') { scanCfg.profile = t.value; saveScanCfg(); if (sc.out) compileScan(); scheduleScan(); }
-    else if (t.id === 'scEdge') { scanCfg.minEdge = Math.max(0, Number(t.value) || 0); saveScanCfg(); if (sc.out) compileScan(); scheduleScan(); }
+    else if (t.id === 'scMode') { scanCfg.mode = t.value === 'value' ? 'value' : 'prob'; saveScanCfg(); if (sc.out) compileScan(); scheduleScan(); }
+    else if (t.id === 'scEdge') { scanCfg[scanCfg.mode === 'value' ? 'minEdge' : 'minEdgeP'] = Math.max(0, Number(t.value) || 0); saveScanCfg(); if (sc.out) compileScan(); scheduleScan(); }
     else if (t.dataset && t.dataset.sx === 'scen') { scanCfg.en[t.dataset.k] = t.checked; saveScanCfg(); if (sc.out) compileScan(); scheduleScan(); }
     else if (t.id === 'sxDate') { if (t.value) { st.day = t.value; loadDay(false); } }
     else if (t.id === 'sxOnlyOdds') { st.onlyOdds = t.checked; refreshTab(); }
