@@ -225,6 +225,7 @@ button.sx-chip.on { background: var(--blue); border-color: var(--blue); color: #
 .pm-top > div:first-child { min-width: 0; overflow-wrap: anywhere; } .pm-top .muted { display: block; }
 .pm-top.m { border-left-color: var(--amber); } .pm-top.s { border-left-color: var(--green); }
 .pm-p { display: flex; flex-direction: column; align-items: flex-end; flex: 0 0 auto; } .pm-p b { font-size: 17px; }
+.pm-cg { flex: 0 0 100%; margin-top: 4px; }
 
 header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidden] { display: block; }
 </style>
@@ -2606,6 +2607,39 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     for (const L of [0.5, 1.5]) { const k = `ht_ou:${L}:over`; if (has(k)) rows.push({ g: '1ο ημίχρονο', title: `Over/Under ${L}`, items: lean([it(`Over ${L}`, pm[k], k, `1ο ημίχρονο Over ${L}`), it(`Under ${L}`, 1 - pm[k], `ht_ou:${L}:under`, `1ο ημίχρονο Under ${L}`)]) }); }
     return rows;
   };
+  /* one probability by market key; «under» / «NG» are derived from their «over» / «GG» twin */
+  SC.pmGet = function (pm, key) {
+    if (!pm) return null;
+    if (typeof pm[key] === 'number') return pm[key];
+    const m = /^(ou:[\d.]+|tt:[ha]:[\d.]+|ht_ou:[\d.]+):under$/.exec(key);
+    if (m && typeof pm[m[1] + ':over'] === 'number') return 1 - pm[m[1] + ':over'];
+    if (key === 'btts:no' && typeof pm['btts:yes'] === 'number') return 1 - pm['btts:yes'];
+    return null;
+  };
+  /* the markets a user can rank all matches by */
+  SC.PM_RANK = [
+    { g: 'Σύνολο γκολ', items: [['ou:2.5:over', 'Over 2.5'], ['ou:2.5:under', 'Under 2.5'], ['ou:1.5:over', 'Over 1.5'], ['ou:1.5:under', 'Under 1.5'], ['ou:3.5:over', 'Over 3.5'], ['ou:3.5:under', 'Under 3.5']] },
+    { g: 'GG / NG', items: [['btts:yes', 'GG'], ['btts:no', 'NG']] },
+    { g: 'Αποτέλεσμα', items: [['ft:1', '1'], ['ft:X', 'Χ'], ['ft:2', '2'], ['dc:1X', '1Χ'], ['dc:12', '12'], ['dc:X2', 'Χ2']] },
+    { g: 'Γκολ γηπεδούχου', items: [['tt:h:0.5:over', 'Over 0.5'], ['tt:h:1.5:over', 'Over 1.5'], ['tt:h:1.5:under', 'Under 1.5']] },
+    { g: 'Γκολ φιλοξενούμενου', items: [['tt:a:0.5:over', 'Over 0.5'], ['tt:a:1.5:over', 'Over 1.5'], ['tt:a:1.5:under', 'Under 1.5']] },
+  ];
+  SC.pmRankLabel = function (key) {
+    for (const g of SC.PM_RANK) for (const [k, t] of g.items) if (k === key) return /^tt:/.test(k) ? (k.startsWith('tt:h') ? 'Γηπεδούχος ' : 'Φιλοξενούμενος ') + t : t;
+    return key;
+  };
+  /* every scanned match ordered by the probability of ONE market, highest first (the user picks the market) */
+  SC.pmRank = function (recs, key, o) {
+    o = Object.assign({ min: 0 }, o || {});
+    const side = /^tt:h/.test(key) ? 'h' : /^tt:a/.test(key) ? 'a' : null, out = [];
+    for (const r of recs || []) {
+      if (r.status !== 'ok' || !r.sum || !r.sum.pm) continue;
+      const p = SC.pmGet(r.sum.pm, key);
+      if (p == null || !(p >= o.min)) continue;
+      out.push({ mid: r.fix.id, ts: r.fix.ts, home: r.fix.home.name, away: r.fix.away.name, league: r.fix.league.name, side, team: side === 'h' ? r.fix.home.name : side === 'a' ? r.fix.away.name : null, p, fair: 1 / p, modelless: !!r.modelless, lowData: r.completeness != null && r.completeness < 0.45, noOdds: !!r.noOdds });
+    }
+    return out.sort((a, b) => b.p - a.p || a.ts - b.ts);
+  };
   /* The model's most likely lines over all scanned matches (ranked by probability, at most `perMatch` per match).
      Near-certain lines (above `maxP`) are left out and so are matches that only run on league averages. */
   SC.topLeans = function (recs, o) {
@@ -3193,7 +3227,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
   }
 
   // ------------------------------------------------ day scanner: every match of the day that has not started → best bets
-  const scanCfg = Object.assign({ depth: 'auto', scope: null, bank: 300, profile: 'bal', minEdge: 3, minEdgeP: 0, mode: 'prob', minP: null, oMin: 1.3, oMax: 3.5, lgOff: [], sort: 'prob', presets: {}, presetSel: '', pmMin: 0, pmSort: 'time' }, cfg.scan || {});
+  const scanCfg = Object.assign({ depth: 'auto', scope: null, bank: 300, profile: 'bal', minEdge: 3, minEdgeP: 0, mode: 'prob', minP: null, oMin: 1.3, oMax: 3.5, lgOff: [], sort: 'prob', presets: {}, presetSel: '', pmMin: 0, pmSort: 'time', pmRank: 'ou:2.5:over' }, cfg.scan || {});
   if (scanCfg.mode !== 'value') scanCfg.mode = 'prob';
   if (!['prob', 'ev', 'time'].includes(scanCfg.sort)) scanCfg.sort = 'prob';
   if (!Array.isArray(scanCfg.lgOff)) scanCfg.lgOff = [];
@@ -3427,7 +3461,8 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const SCN = window.SimScan;
     let h = '', last = null;
     for (const r of rows) {
-      if (min > 0 && !r.items.some((x) => x.p >= min)) continue;
+      const core = r.title === '1Χ2' || r.title === 'GG / NG' || (r.g === 'Σύνολο γκολ' && r.title === 'Over/Under 2.5');   // the main lines are always shown
+      if (min > 0 && !core && !r.items.some((x) => x.p >= min)) continue;
       if (r.g !== last) { h += `<div class="pm-g">${esc(r.g)}</div>`; last = r.g; }
       h += `<div class="pm-row"><span class="pm-t">${esc(r.title)}</span><div class="pm-its">${r.items.map((x) => {
         const lv = SCN.pmLevel(x.p);
@@ -3452,6 +3487,14 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     if (!top.length) return '<p class="muted">Καμία πιθανότητα δεν περνά το όριο.</p>';
     return top.map((x) => `<div class="pm-top ${window.SimScan.pmLevel(x.p)}"><div><b>${esc(x.label)}</b> <span class="muted sx-small">${esc(x.match)} · ${hhmm(x.ts)}${x.lowData ? ' · ⚠ λίγα δεδομένα' : ''}</span></div><div class="pm-p"><b>${pc(x.p)}</b><span class="muted sx-small">δίκαιη ${od(x.fair)}</span></div></div>`).join('');
   }
+  /* all matches ordered by the probability of one market the user picks (Over 2.5, GG, 1, ...) */
+  function pmRankHtml(live, min) {
+    const SCN = window.SimScan, rk = scanCfg.pmRank || 'ou:2.5:over';
+    const chips = SCN.PM_RANK.map((g) => `<div class="sx-chips"><span class="muted sx-small pm-cg">${esc(g.g)}</span>${g.items.map(([k, t]) => `<button class="sx-chip${rk === k ? ' on' : ''}" data-sx="pmrank" data-k="${k}">${esc(t)}</button>`).join('')}</div>`).join('');
+    const list = SCN.pmRank(live, rk, { min });
+    const rows = list.length ? list.map((x, i) => `<div class="pm-top ${SCN.pmLevel(x.p)}"><div><b>${i + 1}. ${esc(x.home)} – ${esc(x.away)}</b>${x.team ? ` <span class="muted sx-small">(γκολ ${esc(x.team)})</span>` : ''}<span class="muted sx-small">${hhmm(x.ts)} · ${esc(x.league)}${x.modelless ? ' · ⚠ μέσος όρος λίγκας' : x.lowData ? ' · ⚠ λίγα δεδομένα' : ''}${x.noOdds ? ' · χωρίς αποδόσεις' : ''}</span></div><div class="pm-p"><b>${pc(x.p)}</b><span class="muted sx-small">δίκαιη ${od(x.fair)}</span></div></div>`).join('') : '<p class="muted">Κανένας αγώνας δεν περνά το όριο που διάλεξες.</p>';
+    return `<details class="sx-det" open><summary><b>Κατάταξη ανά αγορά</b> <span class="muted">— διάλεξε αγορά, δες πρώτους τους πιο πιθανούς αγώνες</span></summary>${chips}<h2 style="margin:8px 0 2px">Πιθανότεροι αγώνες για: ${esc(SCN.pmRankLabel(rk))} <span class="muted">(${list.length})</span></h2>${rows}</details>`;
+  }
   function pmViewHtml() {
     const SCN = window.SimScan, min = scanCfg.pmMin || 0, now = Date.now(), off = new Set(scanCfg.lgOff);
     const all = (sc.recs || []).filter((r) => r.status === 'ok' && r.sum);
@@ -3464,6 +3507,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     if (old) h += `<p class="neg sx-small">⚠ Σε ${old} αγώνες λείπουν οι πιθανότητες (σάρωση από παλιότερη έκδοση) — κάνε νέα σάρωση.</p>`;
     h += PM_NOTE + pmChips('scan');
     h += `<div class="sx-chips"><span class="muted sx-small">Σειρά αγώνων</span>${[['time', 'Ώρα'], ['top', 'Πιο σίγουρες επιλογές']].map(([k, t]) => `<button class="sx-chip${scanCfg.pmSort === k ? ' on' : ''}" data-sx="pmsort" data-v="${k}">${t}</button>`).join('')}</div>`;
+    h += pmRankHtml(live, min);
     const top = SCN.topLeans(live, { n: 12, minP: Math.max(0.6, min), perMatch: 2 });
     h += `<details class="sx-det" open><summary><b>Οι πιο πιθανές επιλογές του μοντέλου</b> <span class="muted">(${top.length}) — έως 2 ανά αγώνα · οι σχεδόν βέβαιες (&gt;90%) παραλείπονται</span></summary>${pmTopHtml(top)}</details>`;
     const topP = (r) => Math.max(0, ...(SCN.pmView(r.sum.pm, { h: 'h', a: 'a' }) || []).filter((row) => row.g !== '1ο ημίχρονο').flatMap((row) => row.items.filter((x) => x.lean && x.p <= 0.9).map((x) => x.p)));
@@ -3556,6 +3600,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     else if (a === 'scanres') { sc.view = 'res'; renderScan(); }
     else if (a === 'pmopen') { sc.view = sc.recs && sc.recs.length ? 'pm' : sc.view; renderScan(); const bx = $('#sxScan'); if (bx) bx.scrollIntoView({ block: 'start' }); }
     else if (a === 'pmmin') { scanCfg.pmMin = Number(b.dataset.v) || 0; saveScanCfg(); if (b.dataset.w === 'tab') refreshTab(); else renderScan(); }
+    else if (a === 'pmrank') { scanCfg.pmRank = b.dataset.k; saveScanCfg(); renderScan(); }
     else if (a === 'pmsort') { scanCfg.pmSort = b.dataset.v === 'top' ? 'top' : 'time'; saveScanCfg(); renderScan(); }
     else if (a === 'scanpick') pick(Number(b.dataset.id));
     else if (a === 'mkt') { const k = b.dataset.k; scanCfg.en[k] = scanCfg.en[k] === false; scanCfg.presetSel = ''; saveScanCfg(); if (sc.out) compileScan(); scheduleScan(); }
