@@ -210,6 +210,22 @@ button.sx-chip.on { background: var(--blue); border-color: var(--blue); color: #
 .sc-exp { display: inline-block; font-size: 11px; font-weight: 400; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; margin-left: 4px; white-space: nowrap; vertical-align: middle; }
 .sc-exp b { color: var(--text); }
 
+/* model probabilities (scan view + match tab) */
+.pm-card { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 8px 10px; margin: 8px 0; min-width: 0; }
+.pm-h { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; min-width: 0; } .pm-h b { overflow-wrap: anywhere; }
+.pm-g { margin: 8px 0 2px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); overflow-wrap: anywhere; }
+.pm-row { display: flex; gap: 8px; align-items: stretch; padding: 3px 0; min-width: 0; }
+.pm-t { flex: 0 0 74px; font-size: 12px; color: var(--muted); align-self: center; line-height: 1.2; }
+.pm-its { flex: 1 1 auto; display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.pm-i { flex: 1 1 64px; max-width: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); line-height: 1.15; min-width: 0; }
+.pm-i i { font-style: normal; font-size: 11px; color: var(--muted); } .pm-i b { font-size: 15px; } .pm-i em { font-style: normal; font-size: 10px; color: var(--muted); }
+.pm-i.lean { border-color: var(--muted); } .pm-i.lean b { color: var(--text); }
+.pm-i.m { border-color: var(--amber); background: rgba(245,158,11,.14); } .pm-i.s { border-color: var(--green); background: rgba(34,197,94,.16); }
+.pm-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 8px; margin: 5px 0; border: 1px solid var(--line); border-left-width: 4px; border-radius: 8px; background: var(--panel); min-width: 0; }
+.pm-top > div:first-child { min-width: 0; overflow-wrap: anywhere; } .pm-top .muted { display: block; }
+.pm-top.m { border-left-color: var(--amber); } .pm-top.s { border-left-color: var(--green); }
+.pm-p { display: flex; flex-direction: column; align-items: flex-end; flex: 0 0 auto; } .pm-p b { font-size: 17px; }
+
 header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidden] { display: block; }
 </style>
 </head>
@@ -2517,7 +2533,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
       status: 'ok', noOdds: !have, ts: f.ts, completeness: b.completeness, crossLeague: !!b.crossLeague, lineups: !!ctx.lineups, nBooks: (ctx.odds && ctx.odds.nBooks) || 0,
       dataMode: b.dataMode, marketLed: !!b.marketLed, modelless: !!b.modelless, lowDataNotes: (b.lowData || []).slice(0, 4),
       depth: o.depth, hasCorners: !!ctx.corners, hasCards: !!ctx.teamStats, referee: f.referee || null, calls: ctx.calls,
-      sum: { p1: by['ft:1'].p, pX: by['ft:X'].p, p2: by['ft:2'].p, o25: by['ou:2.5:over'].p, gg: by['btts:yes'].p, xh: R.mean.hg, xa: R.mean.ag, corners: R.mean.coH + R.mean.coA, cards: R.mean.yH + R.mean.yA + R.mean.rH + R.mean.rA, coh: R.mean.coH, coa: R.mean.coA, cdh: R.mean.yH + R.mean.rH, cda: R.mean.yA + R.mean.rA },
+      sum: { pm: SC.pmFrom(mk), p1: by['ft:1'].p, pX: by['ft:X'].p, p2: by['ft:2'].p, o25: by['ou:2.5:over'].p, gg: by['btts:yes'].p, xh: R.mean.hg, xa: R.mean.ag, corners: R.mean.coH + R.mean.coA, cards: R.mean.yH + R.mean.yA + R.mean.rH + R.mean.rA, coh: R.mean.coH, coa: R.mean.coA, cdh: R.mean.yH + R.mean.rH, cda: R.mean.yA + R.mean.rA },
       incoherent: [...coh.bad].map((k) => ({ label: by[k].label, price: coh.info[k].price, fair: coh.info[k].fair })),
       rows: usable ? SC.evalSingles(mk, best, info) : [],
       builders: usable ? SC.builders(col, info) : [],
@@ -2560,6 +2576,54 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     await Promise.all([worker(), worker()]);
     for (const r of out) if (r.status === 'wait' || r.status === 'run') { r.status = 'skip'; r.note = fatal ? 'διακόπηκε: ' + fatal : 'δεν σαρώθηκε (διακοπή)'; }
     return out;
+  };
+
+  // ===================================================== model probabilities (no odds needed)
+  /* The model's own probabilities for the main markets, kept in every scan record (sum.pm) so they exist even for matches without odds. */
+  const PM_KEYS = ['ft:1', 'ft:X', 'ft:2', 'dc:1X', 'dc:12', 'dc:X2', 'ou:1.5:over', 'ou:2.5:over', 'ou:3.5:over', 'btts:yes',
+    'tt:h:0.5:over', 'tt:h:1.5:over', 'tt:h:2.5:over', 'tt:a:0.5:over', 'tt:a:1.5:over', 'tt:a:2.5:over', 'ht_ou:0.5:over', 'ht_ou:1.5:over'];
+  SC.pmFrom = function (mk) {
+    const by = Array.isArray(mk) ? Object.fromEntries(mk.map((m) => [m.key, m.p])) : (mk || {});
+    const pm = {};
+    for (const k of PM_KEYS) if (typeof by[k] === 'number' && isFinite(by[k])) pm[k] = Math.round(by[k] * 10000) / 10000;
+    return pm;
+  };
+  /* strength of a probability for colouring: 's' >= 70%, 'm' >= 60% */
+  SC.pmLevel = (p) => (p >= 0.70 ? 's' : p >= 0.60 ? 'm' : '');
+  /* Rows to show for one match: [{g: group, title, items: [{t, p, key, label, lean?}]}]. The «lean» is the more likely side of a line. */
+  SC.pmView = function (pm, names) {
+    if (!pm || typeof pm['ft:1'] !== 'number') return null;
+    names = names || { h: 'Γηπεδούχος', a: 'Φιλοξενούμενος' };
+    const has = (k) => typeof pm[k] === 'number';
+    const it = (t, p, key, label) => ({ t, p, key, label: label || t });
+    const lean = (items) => { let b = 0; items.forEach((x, i) => { if (x.p > items[b].p) b = i; }); items[b].lean = true; return items; };
+    const rows = [];
+    if (has('ft:X') && has('ft:2')) rows.push({ g: 'Αποτέλεσμα', title: '1Χ2', items: lean([it('1', pm['ft:1'], 'ft:1', `1 · ${names.h}`), it('Χ', pm['ft:X'], 'ft:X', 'Χ · Ισοπαλία'), it('2', pm['ft:2'], 'ft:2', `2 · ${names.a}`)]) });
+    if (has('dc:1X') && has('dc:12') && has('dc:X2')) rows.push({ g: 'Αποτέλεσμα', title: 'Διπλή ευκαιρία', items: [it('1Χ', pm['dc:1X'], 'dc:1X', `1Χ · ${names.h} ή ισοπαλία`), it('12', pm['dc:12'], 'dc:12', '12 · Χωρίς ισοπαλία'), it('Χ2', pm['dc:X2'], 'dc:X2', `Χ2 · ισοπαλία ή ${names.a}`)] });
+    for (const L of [1.5, 2.5, 3.5]) { const k = `ou:${L}:over`; if (has(k)) rows.push({ g: 'Σύνολο γκολ', title: `Over/Under ${L}`, items: lean([it(`Over ${L}`, pm[k], k, `Over ${L} γκολ`), it(`Under ${L}`, 1 - pm[k], `ou:${L}:under`, `Under ${L} γκολ`)]) }); }
+    if (has('btts:yes')) rows.push({ g: 'Σύνολο γκολ', title: 'GG / NG', items: lean([it('GG', pm['btts:yes'], 'btts:yes', 'GG · Σκοράρουν και οι δύο'), it('NG', 1 - pm['btts:yes'], 'btts:no', 'NG · Δεν σκοράρουν και οι δύο')]) });
+    for (const side of ['h', 'a']) for (const L of [0.5, 1.5, 2.5]) { const k = `tt:${side}:${L}:over`; if (has(k)) rows.push({ g: `Γκολ ${names[side]}`, title: `Over/Under ${L}`, items: lean([it(`Over ${L}`, pm[k], k, `${names[side]} Over ${L}`), it(`Under ${L}`, 1 - pm[k], `tt:${side}:${L}:under`, `${names[side]} Under ${L}`)]) }); }
+    for (const L of [0.5, 1.5]) { const k = `ht_ou:${L}:over`; if (has(k)) rows.push({ g: '1ο ημίχρονο', title: `Over/Under ${L}`, items: lean([it(`Over ${L}`, pm[k], k, `1ο ημίχρονο Over ${L}`), it(`Under ${L}`, 1 - pm[k], `ht_ou:${L}:under`, `1ο ημίχρονο Under ${L}`)]) }); }
+    return rows;
+  };
+  /* The model's most likely lines over all scanned matches (ranked by probability, at most `perMatch` per match).
+     Near-certain lines (above `maxP`) are left out and so are matches that only run on league averages. */
+  SC.topLeans = function (recs, o) {
+    o = Object.assign({ n: 12, minP: 0.60, maxP: 0.90, perMatch: 2 }, o || {});
+    const cand = [];
+    for (const r of recs || []) {
+      if (r.status !== 'ok' || r.modelless || !r.sum || !r.sum.pm) continue;
+      const names = { h: r.fix.home.name, a: r.fix.away.name };
+      const rows = SC.pmView(r.sum.pm, names) || [];
+      const mine = [];
+      for (const row of rows) {
+        if (row.g === '1ο ημίχρονο') continue;
+        for (const x of row.items) if ((x.lean || row.title === 'Διπλή ευκαιρία') && x.p >= o.minP && x.p <= o.maxP) mine.push({ mid: r.fix.id, ts: r.fix.ts, match: `${names.h} – ${names.a}`, league: r.fix.league.name, group: row.g, title: row.title, t: x.t, label: x.label, key: x.key, p: x.p, fair: 1 / x.p, lowData: r.completeness != null && r.completeness < 0.45 });
+      }
+      mine.sort((a, b) => b.p - a.p);
+      cand.push(...mine.slice(0, o.perMatch));
+    }
+    return cand.sort((a, b) => b.p - a.p || a.ts - b.ts).slice(0, o.n);
   };
 
   // ===================================================== combine everything
@@ -2749,6 +2813,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     st.loadingDay = true; st.dayErr = null; renderSchedule();
     try { st.fixtures = await D.getDay(st.day, force); } catch (e) { st.dayErr = e.message; st.fixtures = null; }
     st.loadingDay = false; renderSchedule();
+    touchSess(); setTimeout(tryScroll, 0);
     if (sc.open && sc.view === 'setup') renderScan();
   }
   function dayChips() {
@@ -2837,7 +2902,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
           if (down !== depth) { st.note = `Έμειναν ${rem} κλήσεις API σήμερα, οπότε χρησιμοποιώ ${down === 'normal' ? 'κανονικό' : 'ελαφρύ'} βάθος.`; depth = down; }
         }
       }
-      const ctx = await D.loadMatch(fix, { depth, force, onLate: (c) => { if (my === st.runId && st.ctx === c && st.tab === 'news') refreshTab(); }, onTask: (t) => { if (my !== st.runId) return; const i = st.tasks.findIndex((x) => x.id === t.id); if (i >= 0) st.tasks[i] = Object.assign({}, t); else st.tasks.push(Object.assign({}, t)); renderProgress(); } });
+      const ctx = await D.loadMatch(fix, { depth, force, onLate: (c) => { if (my === st.runId && st.ctx === c) { if (st.tab === 'news') refreshTab(); saveCtx(); } }, onTask: (t) => { if (my !== st.runId) return; const i = st.tasks.findIndex((x) => x.id === t.id); if (i >= 0) st.tasks[i] = Object.assign({}, t); else st.tasks.push(Object.assign({}, t)); renderProgress(); } });
       if (my !== st.runId) return;
       st.ctx = ctx; st.depthUsed = depth;
       await recompute(my);
@@ -2857,6 +2922,8 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     st.R = R; st.markets = MK.markets(R, { h: st.ctx.fixture.home.name, a: st.ctx.fixture.away.name });
     st.busy = false; st.err = null;
     renderMatch();
+    saveCtx(); saveSess();
+    setTimeout(tryScroll, 0);
   }
   function scheduleRecompute() { clearTimeout(recompTimer); recompTimer = setTimeout(() => recompute(), 350); }
 
@@ -2917,7 +2984,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
       ${b.blend && b.blend.market ? `<div class="muted sx-small">${b.blend.src === 'api' ? 'Πρόβλεψη API-Football' : 'Αγορά (χωρίς περιθώριο)'}: ${pc(b.blend.market.h)}/${pc(b.blend.market.d)}/${pc(b.blend.market.a)} · καθαρό μοντέλο: ${pc(b.blend.pure.h)}/${pc(b.blend.pure.d)}/${pc(b.blend.pure.a)}</div>` : '<div class="muted sx-small">Δεν υπάρχουν ακόμα αποδόσεις: το αποτέλεσμα βασίζεται μόνο στο μοντέλο.</div>'}
       <div class="sx-btns"><button class="primary" data-sx="watch">🎮 Δες τον αγώνα</button><button data-sx="likely">🎯 Πιθανότερο σενάριο (${lk.h}-${lk.a})</button><button data-sx="reseed">🎲 Νέα προσομοίωση</button><button data-sx="rerun">↻ Ανανέωση δεδομένων &amp; επανάληψη</button></div>
       <p class="note">Στατιστική εκτίμηση, όχι εγγύηση κέρδους και όχι χρηματοοικονομική συμβουλή. Έλεγξε την πραγματική απόδοση πριν στοιχηματίσεις και παίξε μόνο ό,τι αντέχεις να χάσεις.</p></section>`;
-    h += `<div class="seg sx-tabs">${[['tips', '💡 Προτάσεις'], ['mk', '📊 Αγορές'], ['fac', '⚙ Παράγοντες'], ['charts', '📈 Γραφήματα'], ['news', '📰 Νέα'], ['data', '🔎 Δεδομένα']].map(([k, t]) => `<button class="tabbtn${st.tab === k ? ' on' : ''}" data-sx="tab" data-t="${k}">${t}</button>`).join('')}</div>`;
+    h += `<div class="seg sx-tabs">${[['tips', '💡 Προτάσεις'], ['pm', '🎯 Πιθανότητες'], ['mk', '📊 Αγορές'], ['fac', '⚙ Παράγοντες'], ['charts', '📈 Γραφήματα'], ['news', '📰 Νέα'], ['data', '🔎 Δεδομένα']].map(([k, t]) => `<button class="tabbtn${st.tab === k ? ' on' : ''}" data-sx="tab" data-t="${k}">${t}</button>`).join('')}</div>`;
     h += `<section class="card" id="sxTabBody">${tabBody()}</section>`;
     return h;
   }
@@ -3083,6 +3150,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
   function tabBody() {
     try {
       switch (st.tab) {
+        case 'pm': return pmTabHtml();
         case 'mk': return marketsHtml();
         case 'fac': return factorsHtml();
         case 'charts': return chartsHtml();
@@ -3125,7 +3193,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
   }
 
   // ------------------------------------------------ day scanner: every match of the day that has not started → best bets
-  const scanCfg = Object.assign({ depth: 'auto', scope: null, bank: 300, profile: 'bal', minEdge: 3, minEdgeP: 0, mode: 'prob', minP: null, oMin: 1.3, oMax: 3.5, lgOff: [], sort: 'prob', presets: {}, presetSel: '' }, cfg.scan || {});
+  const scanCfg = Object.assign({ depth: 'auto', scope: null, bank: 300, profile: 'bal', minEdge: 3, minEdgeP: 0, mode: 'prob', minP: null, oMin: 1.3, oMax: 3.5, lgOff: [], sort: 'prob', presets: {}, presetSel: '', pmMin: 0, pmSort: 'time' }, cfg.scan || {});
   if (scanCfg.mode !== 'value') scanCfg.mode = 'prob';
   if (!['prob', 'ev', 'time'].includes(scanCfg.sort)) scanCfg.sort = 'prob';
   if (!Array.isArray(scanCfg.lgOff)) scanCfg.lgOff = [];
@@ -3208,27 +3276,33 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     await D.quota();
     const plan = scanPlan();
     if (!plan.fixtures.length) { sc.err = 'Δεν υπάρχουν αγώνες για σάρωση με αυτές τις ρυθμίσεις (όσοι δεν έχουν ξεκινήσει).'; renderScan(); return; }
-    sc.err = null; sc.busy = true; sc.cancel = false; sc.view = 'run'; sc.depth = plan.depth; sc.day = st.day;
+    sc.err = null; sc.partial = null; sc.busy = true; sc.cancel = false; sc.view = 'run'; sc.depth = plan.depth; sc.day = st.day;
     sc.recs = plan.fixtures.map((f) => ({ fix: { id: f.id, ts: f.ts, league: { id: f.league.id, name: f.league.name, country: f.league.country }, home: { name: f.home.name }, away: { name: f.away.name } }, status: 'wait' }));
     renderScan();
     const o = { depth: plan.depth, nSim: Math.min(cfg.nSim, 15000), blendW: cfg.blendW / 100 };
     let recs;
     try {
-      recs = await window.SimScan.run(plan.fixtures, o, { onUpdate: (i, rec) => { sc.recs[i] = rec; updateScanProgress(); }, cancelled: () => sc.cancel });
+      recs = await window.SimScan.run(plan.fixtures, o, { onUpdate: (i, rec) => { sc.recs[i] = rec; updateScanProgress(); persistScanSoon(); }, cancelled: () => sc.cancel });
     } catch (e) { sc.busy = false; sc.err = 'Η σάρωση απέτυχε: ' + (e.message || e); sc.view = 'setup'; renderScan(); return; }
     sc.recs = recs; sc.busy = false; sc.at = Date.now();
     compileScan(); persistScan();
     sc.view = 'res'; renderScan();
   }
-  function persistScan() {
+  function persistScan(partial) {
     try {
       const slimRecs = (sc.recs || []).map((r) => ({ fix: r.fix, status: r.status, note: r.note, noOdds: r.noOdds, completeness: r.completeness, incoherent: r.incoherent, dataMode: r.dataMode, marketLed: r.marketLed, modelless: r.modelless, lowDataNotes: r.lowDataNotes, lineups: r.lineups, nBooks: r.nBooks, depth: r.depth, hasCorners: r.hasCorners, hasCards: r.hasCards, referee: r.referee, sum: r.sum, rows: (r.rows || []).filter((x) => x.eligible), builders: r.builders }));
-      localStorage.setItem('lbd_scan', JSON.stringify({ day: sc.day, at: sc.at, depth: sc.depth, recs: slimRecs }));
+      if (partial) localStorage.setItem('lbd_scan_p', JSON.stringify({ day: sc.day, at: Date.now(), depth: sc.depth, partial: true, recs: slimRecs }));
+      else { localStorage.setItem('lbd_scan', JSON.stringify({ day: sc.day, at: sc.at, depth: sc.depth, recs: slimRecs })); localStorage.removeItem('lbd_scan_p'); }
     } catch {}
   }
   function restoreScan() {
-    const o = LS('lbd_scan', null);
-    if (!o || !Array.isArray(o.recs) || !o.at || Date.now() - o.at > 14 * 3600000) return;
+    const good = (x) => x && Array.isArray(x.recs) && x.at && Date.now() - x.at <= 14 * 3600000;
+    let o = LS('lbd_scan', null);
+    const p = LS('lbd_scan_p', null), pDone = good(p) ? p.recs.filter((r) => r.status === 'ok').length : 0;
+    sc.partial = null;
+    // a scan that was cut off (page thrown away by the phone) is shown when it is newer and has real content
+    if (pDone >= 3 && (!good(o) || p.at > o.at)) { o = p; sc.partial = { done: pDone, total: p.recs.length }; }
+    if (!good(o)) return;
     sc.recs = o.recs; sc.at = o.at; sc.depth = o.depth; sc.day = o.day;
     compileScan();
   }
@@ -3343,11 +3417,81 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const mp = o.minP != null ? o.minP : scanCfg.mode === 'value' ? null : SCN.PROB.minP;
     return [scanCfg.mode === 'value' ? 'μεγαλύτερο value' : 'πιθανότερα', mp != null ? `πιθανότητα ≥ ${Math.round(mp * 100)}%` : null, `απόδοση ${Math.max(1.3, o.oMin).toFixed(2)}–${o.oMax.toFixed(2)}`, `edge ≥ ${(scanEdge() * 100).toFixed(1).replace(/\.0$/, '')}%`, scanCfg.lgOff.length ? `${scanCfg.lgOff.length} λίγκες εκτός` : null, off.length ? 'χωρίς ' + off.join(', ') : null, scanCfg.en.parlay ? null : 'χωρίς παρολί'].filter(Boolean).join(' · ');
   }
+  // ------------------------------------------------ model probabilities (work with or without bookmaker odds)
+  const PM_MINS = [[0, 'Όλες'], [0.6, '≥ 60%'], [0.7, '≥ 70%']];
+  function pmChips(where) {
+    const min = scanCfg.pmMin || 0;
+    return `<div class="sx-chips"><span class="muted sx-small">Εμφάνιση</span>${PM_MINS.map(([v, t]) => `<button class="sx-chip${min === v ? ' on' : ''}" data-sx="pmmin" data-w="${where}" data-v="${v}">${t}</button>`).join('')}</div>`;
+  }
+  function pmRowsHtml(rows, min) {
+    const SCN = window.SimScan;
+    let h = '', last = null;
+    for (const r of rows) {
+      if (min > 0 && !r.items.some((x) => x.p >= min)) continue;
+      if (r.g !== last) { h += `<div class="pm-g">${esc(r.g)}</div>`; last = r.g; }
+      h += `<div class="pm-row"><span class="pm-t">${esc(r.title)}</span><div class="pm-its">${r.items.map((x) => {
+        const lv = SCN.pmLevel(x.p);
+        return `<span class="pm-i${x.lean ? ' lean' : ''}${lv ? ' ' + lv : ''}"><i>${esc(x.t)}</i><b>${pc(x.p)}</b><em>${od(1 / x.p)}</em></span>`;
+      }).join('')}</div></div>`;
+    }
+    return h;
+  }
+  const PM_NOTE = '<p class="note">Οι πιθανότητες είναι του μοντέλου (προσομοίωση + μίξη με την αγορά), όχι αποδόσεις bookmaker. Κάτω από κάθε ποσοστό φαίνεται η <b>δίκαιη απόδοση</b> (1 ÷ πιθανότητα): στοιχηματίζεις με αξία μόνο αν η τιμή του bookmaker είναι πάνω από αυτήν. Με έντονο χρώμα η πιθανότερη πλευρά κάθε γραμμής (πράσινο ≥ 70%, κίτρινο ≥ 60%).</p>';
+  function pmMatchHtml(r, min) {
+    const names = { h: r.fix.home.name, a: r.fix.away.name }, s = r.sum;
+    const rows = window.SimScan.pmView(s && s.pm, names);
+    const [cl, cc] = window.SimBuild.completenessLabel(r.completeness == null ? 0.6 : r.completeness);
+    let h = `<div class="pm-card"><div class="pm-h"><b>${esc(names.h)} – ${esc(names.a)}</b><span class="muted sx-small">${hhmm(r.fix.ts)} · ${esc(r.fix.league.name)} · <span class="tag ${cc}">${cl}</span>${r.noOdds ? ' · χωρίς αποδόσεις ακόμα' : ''}</span></div>`;
+    if (!rows) return h + '<p class="muted sx-small">Αυτή η αποθηκευμένη σάρωση είναι από παλιότερη έκδοση — πάτα «Νέα σάρωση» για να εμφανιστούν οι πιθανότητες.</p></div>';
+    if (r.modelless) h += '<p class="neg sx-small">⚠ Δεν υπάρχουν στατιστικά ομάδων — τα ποσοστά βγαίνουν από μέσο όρο λίγκας, μην τα εμπιστεύεσαι.</p>';
+    if (s && s.xh != null) h += `<div class="muted sx-small">Αναμενόμενα γκολ: <b>${s.xh.toFixed(1)}</b> – <b>${s.xa.toFixed(1)}</b> (σύνολο ${(s.xh + s.xa).toFixed(1)})</div>`;
+    const body = pmRowsHtml(rows, min);
+    return h + (body || '<p class="muted sx-small">Καμία γραμμή δεν περνά αυτό το όριο.</p>') + '</div>';
+  }
+  function pmTopHtml(top) {
+    if (!top.length) return '<p class="muted">Καμία πιθανότητα δεν περνά το όριο.</p>';
+    return top.map((x) => `<div class="pm-top ${window.SimScan.pmLevel(x.p)}"><div><b>${esc(x.label)}</b> <span class="muted sx-small">${esc(x.match)} · ${hhmm(x.ts)}${x.lowData ? ' · ⚠ λίγα δεδομένα' : ''}</span></div><div class="pm-p"><b>${pc(x.p)}</b><span class="muted sx-small">δίκαιη ${od(x.fair)}</span></div></div>`).join('');
+  }
+  function pmViewHtml() {
+    const SCN = window.SimScan, min = scanCfg.pmMin || 0, now = Date.now(), off = new Set(scanCfg.lgOff);
+    const all = (sc.recs || []).filter((r) => r.status === 'ok' && r.sum);
+    const live = all.filter((r) => !(r.fix.ts && r.fix.ts < now) && !off.has(r.fix.league.id));
+    const started = all.filter((r) => r.fix.ts && r.fix.ts < now).length;
+    let h = `<p class="note" style="margin-top:0">${sc.day ? 'Αγώνες ' + dayLabel(sc.day) + ' · ' : ''}<b>${live.length}</b> αγώνες${started ? ` (άλλοι ${started} έχουν ήδη ξεκινήσει)` : ''}.</p>`;
+    h += `<div class="sx-btns"><button data-sx="scanres">← Προτάσεις με αποδόσεις</button><button data-sx="scanstart">↻ Νέα σάρωση</button><button data-sx="scanclose">Κλείσιμο</button></div>`;
+    if (!live.length) return h + '<p class="muted">Δεν υπάρχουν αγώνες με αποθηκευμένες πιθανότητες. Τρέξε σάρωση ημέρας.</p>';
+    const old = live.filter((r) => !(r.sum && r.sum.pm)).length;
+    if (old) h += `<p class="neg sx-small">⚠ Σε ${old} αγώνες λείπουν οι πιθανότητες (σάρωση από παλιότερη έκδοση) — κάνε νέα σάρωση.</p>`;
+    h += PM_NOTE + pmChips('scan');
+    h += `<div class="sx-chips"><span class="muted sx-small">Σειρά αγώνων</span>${[['time', 'Ώρα'], ['top', 'Πιο σίγουρες επιλογές']].map(([k, t]) => `<button class="sx-chip${scanCfg.pmSort === k ? ' on' : ''}" data-sx="pmsort" data-v="${k}">${t}</button>`).join('')}</div>`;
+    const top = SCN.topLeans(live, { n: 12, minP: Math.max(0.6, min), perMatch: 2 });
+    h += `<details class="sx-det" open><summary><b>Οι πιο πιθανές επιλογές του μοντέλου</b> <span class="muted">(${top.length}) — έως 2 ανά αγώνα · οι σχεδόν βέβαιες (&gt;90%) παραλείπονται</span></summary>${pmTopHtml(top)}</details>`;
+    const topP = (r) => Math.max(0, ...(SCN.pmView(r.sum.pm, { h: 'h', a: 'a' }) || []).filter((row) => row.g !== '1ο ημίχρονο').flatMap((row) => row.items.filter((x) => x.lean && x.p <= 0.9).map((x) => x.p)));
+    const sorted = live.slice().sort(scanCfg.pmSort === 'top' ? (a, b) => topP(b) - topP(a) : (a, b) => a.fix.ts - b.fix.ts);
+    h += `<h2 style="margin-top:12px">Ανά αγώνα</h2>` + sorted.map((r) => pmMatchHtml(r, min)).join('');
+    return h;
+  }
+  /* the same probabilities for the match that is open (tab «Πιθανότητες») */
+  function pmTabHtml() {
+    const SCN = window.SimScan, f = st.ctx.fixture, min = scanCfg.pmMin || 0;
+    const rows = SCN.pmView(SCN.pmFrom(st.markets), { h: f.home.name, a: f.away.name });
+    if (!rows) return '<p class="muted">Δεν υπάρχουν πιθανότητες για αυτόν τον αγώνα.</p>';
+    const leans = [];
+    for (const r of rows) if (r.g !== '1ο ημίχρονο') for (const x of r.items) if ((x.lean || r.title === 'Διπλή ευκαιρία') && x.p >= 0.55 && x.p <= 0.9) leans.push({ label: x.label, p: x.p, fair: 1 / x.p });
+    leans.sort((a, b) => b.p - a.p);
+    let h = '<h2>Πιθανότητες μοντέλου</h2>' + PM_NOTE + pmChips('tab');
+    h += `<div class="pm-card">${pmRowsHtml(rows, min) || '<p class="muted sx-small">Καμία γραμμή δεν περνά αυτό το όριο.</p>'}</div>`;
+    h += `<h2 style="margin-top:12px">Πιθανότερες επιλογές αυτού του αγώνα</h2>` + (leans.length ? leans.slice(0, 8).map((x) => `<div class="pm-top ${SCN.pmLevel(x.p)}"><div><b>${esc(x.label)}</b></div><div class="pm-p"><b>${pc(x.p)}</b><span class="muted sx-small">δίκαιη ${od(x.fair)}</span></div></div>`).join('') : '<p class="muted">Καμία επιλογή δεν φτάνει το 55%.</p>');
+    return h;
+  }
+
   function scanResultHtml() {
     const o = sc.out;
     if (!o) return `<p class="neg">${esc(sc.err || 'Δεν υπάρχουν αποτελέσματα.')}</p>`;
     const done = (sc.recs || []).filter((r) => r.status === 'ok').length;
-    let h = `<p class="note" style="margin-top:0">${sc.day ? 'Αγώνες ' + dayLabel(sc.day) + ' · ' : ''}σαρώθηκαν <b>${done}</b>${o.counts.noOdds ? ` (οι ${o.counts.noOdds} χωρίς αποδόσεις ακόμα)` : ''}${o.counts.skipped ? ` · ${o.counts.skipped} δεν σαρώθηκαν` : ''}${o.started ? ` · ${o.started} ξεκίνησαν στο μεταξύ και αφαιρέθηκαν` : ''} · βάθος ${DEPTH_NAME[sc.depth] || '—'} · ${ago(sc.at)}. Οι τιμές είναι από API-Football (μέση τιμή bookmakers), όχι απαραίτητα του Betpanda — έλεγξε την τιμή στο Betpanda πριν παίξεις.</p>`;
+    let h = sc.partial ? `<p class="neg sx-small">⚠ Η σάρωση διακόπηκε (το κινητό έκλεισε τη σελίδα) — εμφανίζονται οι <b>${sc.partial.done}</b> από τους ${sc.partial.total} αγώνες που πρόλαβαν. Πάτα «Νέα σάρωση» για τους υπόλοιπους.</p>` : '';
+    h += `<p class="note" style="margin-top:0">${sc.day ? 'Αγώνες ' + dayLabel(sc.day) + ' · ' : ''}σαρώθηκαν <b>${done}</b>${o.counts.noOdds ? ` (οι ${o.counts.noOdds} χωρίς αποδόσεις ακόμα)` : ''}${o.counts.skipped ? ` · ${o.counts.skipped} δεν σαρώθηκαν` : ''}${o.started ? ` · ${o.started} ξεκίνησαν στο μεταξύ και αφαιρέθηκαν` : ''} · βάθος ${DEPTH_NAME[sc.depth] || '—'} · ${ago(sc.at)}. Οι τιμές είναι από API-Football (μέση τιμή bookmakers), όχι απαραίτητα του Betpanda — έλεγξε την τιμή στο Betpanda πριν παίξεις.</p>`;
+    h += `<div class="sx-btns"><button class="primary" data-sx="pmopen">📊 Πιθανότητες μοντέλου · 1Χ2, Over/Under, GG/NG, γκολ ομάδων</button></div>`;
     h += `<details class="sx-det"><summary><b>⚙ Ποσό, φίλτρα &amp; αποθηκευμένες ρυθμίσεις</b> <span class="muted">(αλλάζουν αμέσως, χωρίς νέα σάρωση)</span></summary>${scanControlsHtml()}</details>`;
     h += `<div class="sx-filt"><div class="muted sx-small">Φίλτρα: ${esc(filterSummary())}</div><div class="sx-chips sx-sort"><span class="muted sx-small">Ταξινόμηση</span>${[['prob', 'Πιθανότητα'], ['ev', 'EV (edge)'], ['time', 'Ώρα']].map(([k, t]) => chipBtn(`data-sx="sort" data-v="${k}"`, scanCfg.sort === k, t)).join('')}</div></div>`;
     const plan = o.plan;
@@ -3388,12 +3532,13 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     if (!sc.open) { box.innerHTML = ''; return; }
     // changing a filter re-draws the panel: keep the folded/unfolded state of every section and the scroll position
     const keep = sc.lastView === sc.view ? [...box.querySelectorAll('details')].map((d) => d.open) : null, y = window.scrollY;
-    const body = sc.view === 'run' ? scanRunHtml() : sc.view === 'res' ? scanResultHtml() : scanSetupHtml();
+    const body = sc.view === 'run' ? scanRunHtml() : sc.view === 'res' ? scanResultHtml() : sc.view === 'pm' ? pmViewHtml() : scanSetupHtml();
     box.innerHTML = `<section class="card sc-box"><h2>🔎 Σάρωση ημέρας · καλύτερα στοιχήματα</h2>${body}</section>`;
     if (keep) box.querySelectorAll('details').forEach((d, i) => { if (i < keep.length) d.open = keep[i]; });
     sc.lastView = sc.view;
     if (keep && Math.abs(window.scrollY - y) > 2) window.scrollTo(0, y);
     if (sc.view === 'run') updateScanProgress();
+    touchSess();
   }
 
   // ------------------------------------------------ events
@@ -3404,11 +3549,14 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     if (a === 'day') { st.day = b.dataset.d; loadDay(false); }
     else if (a === 'reload') loadDay(true);
     else if (a === 'scanopen') openScan();
-    else if (a === 'scanclose') { sc.open = false; renderScan(); }
+    else if (a === 'scanclose') { sc.open = false; renderScan(); renderSchedule(); }
     else if (a === 'scanstart') runScan();
     else if (a === 'scanstop') { sc.cancel = true; b.disabled = true; b.textContent = 'Σταματάω μετά τον τρέχοντα αγώνα…'; }
     else if (a === 'scansetup') { sc.view = 'setup'; sc.err = null; renderScan(); }
     else if (a === 'scanres') { sc.view = 'res'; renderScan(); }
+    else if (a === 'pmopen') { sc.view = sc.recs && sc.recs.length ? 'pm' : sc.view; renderScan(); const bx = $('#sxScan'); if (bx) bx.scrollIntoView({ block: 'start' }); }
+    else if (a === 'pmmin') { scanCfg.pmMin = Number(b.dataset.v) || 0; saveScanCfg(); if (b.dataset.w === 'tab') refreshTab(); else renderScan(); }
+    else if (a === 'pmsort') { scanCfg.pmSort = b.dataset.v === 'top' ? 'top' : 'time'; saveScanCfg(); renderScan(); }
     else if (a === 'scanpick') pick(Number(b.dataset.id));
     else if (a === 'mkt') { const k = b.dataset.k; scanCfg.en[k] = scanCfg.en[k] === false; scanCfg.presetSel = ''; saveScanCfg(); if (sc.out) compileScan(); scheduleScan(); }
     else if (a === 'lg') { const id = Number(b.dataset.id), i = scanCfg.lgOff.indexOf(id); if (i >= 0) scanCfg.lgOff.splice(i, 1); else scanCfg.lgOff.push(id); scanCfg.presetSel = ''; saveScanCfg(); if (sc.out) compileScan(); scheduleScan(); }
@@ -3428,7 +3576,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     }
     else if (a === 'filter') { cfg.filter = b.dataset.f; save('lbd_sim', cfg); renderSchedule(); }
     else if (a === 'pick') pick(Number(b.dataset.id));
-    else if (a === 'tab') { st.tab = b.dataset.t; refreshTab(); }
+    else if (a === 'tab') { st.tab = b.dataset.t; refreshTab(); touchSess(); }
     else if (a === 'savekey') saveKey();
     else if (a === 'keyopen') { st.keyOpen = !st.keyOpen; renderIntro(); }
     else if (a === 'keyclear') { try { localStorage.removeItem('lbd_key'); } catch {} st.fixtures = null; st.keyOpen = false; mount(); }
@@ -3501,6 +3649,66 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     else if (t.id === 'sxQ') { st.q = t.value; renderSchedule(); const q = $('#sxQ'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
   }
 
+  // ------------------------------------------------ session memory
+  /* A phone browser throws a page away from memory when you switch to another app / tab and reloads it on return,
+     so everything the screen showed would be lost. We keep the day, the scan panel (and a half-finished scan), the open
+     match with its already downloaded data (no new API calls), the selected tab and the scroll position. */
+  const SESS_KEY = 'lbd_sess', CTX_KEY = 'lbd_ctx', SESS_MAX = 12 * 3600000;
+  let sessData = null, wantY = null, lastCtxSig = '', sessT = null, scanSaveT = null;
+  const loadSess = () => { const o = LS(SESS_KEY, null); return o && o.v === 1 && o.at && Date.now() - o.at < SESS_MAX ? o : null; };
+  function saveSess() {
+    if (wantY != null) return;            // still restoring: do not overwrite the saved position with 0
+    try {
+      localStorage.setItem(SESS_KEY, JSON.stringify({
+        v: 1, at: Date.now(), day: st.day, y: Math.round(window.scrollY || 0), seed: st.seed,
+        scan: { open: !!sc.open, view: sc.view },
+        match: st.fix && st.ctx ? { id: st.fix.id, tab: st.tab, depth: st.depthUsed || null, adj: st.adj } : null,
+      }));
+    } catch {}
+  }
+  const touchSess = () => { clearTimeout(sessT); sessT = setTimeout(saveSess, 250); };
+  function saveCtx() {
+    if (!st.ctx || !st.fix) return;
+    const sig = st.fix.id + ':' + (st.ctx.loadedAt || 0) + ':' + (st.ctx.news ? 1 : 0);
+    if (sig === lastCtxSig) return;
+    try { localStorage.setItem(CTX_KEY, JSON.stringify({ id: st.fix.id, at: Date.now(), ctx: st.ctx })); lastCtxSig = sig; }
+    catch {
+      // storage is full: free the oldest simulator caches (they are only a convenience) and try once more
+      try {
+        Object.keys(localStorage).filter((k) => k.startsWith('lbs:')).forEach((k) => localStorage.removeItem(k));
+        localStorage.setItem(CTX_KEY, JSON.stringify({ id: st.fix.id, at: Date.now(), ctx: st.ctx })); lastCtxSig = sig;
+      } catch {}
+    }
+  }
+  function flushSess() { saveSess(); saveCtx(); if (sc.busy) persistScan(true); }
+  /* a scan can take minutes: keep what is finished so far, so a reload does not throw it away */
+  function persistScanSoon() { if (scanSaveT) return; scanSaveT = setTimeout(() => { scanSaveT = null; if (sc.busy) persistScan(true); }, 3000); }
+  function restoreMatch(o) {
+    const m = o && o.match, c = LS(CTX_KEY, null);
+    if (!m || !c || c.id !== m.id || !c.ctx || !c.ctx.fixture || Date.now() - c.at > SESS_MAX) return false;
+    st.fix = c.ctx.fixture; st.ctx = c.ctx; st.tab = m.tab || 'tips'; st.depthUsed = m.depth || st.depthUsed;
+    const a = m.adj || {};
+    st.adj = { disabled: a.disabled || {}, manual: Object.assign({ hAtt: 0, hDef: 0, aAtt: 0, aDef: 0 }, a.manual || {}), neutral: !!a.neutral, derby: !!a.derby, playerOverride: a.playerOverride || {}, start: a.start || null };
+    if (typeof o.seed === 'number') st.seed = o.seed;
+    lastCtxSig = st.fix.id + ':' + (st.ctx.loadedAt || 0) + ':' + (st.ctx.news ? 1 : 0);
+    const my = ++st.runId;
+    recompute(my).catch((e) => { st.err = e.message || String(e); st.busy = false; renderMatch(); });
+    return true;
+  }
+  /* bring the screen back to where it was: the page height changes while lists load, so try a few times until the user touches the screen */
+  function tryScroll() {
+    if (wantY == null) return;
+    window.scrollTo(0, wantY);
+  }
+  function startScrollRestore(y) {
+    if (!(y > 40)) return;
+    wantY = y;
+    const stop = () => { wantY = null; ['touchstart', 'wheel', 'mousedown', 'keydown'].forEach((ev) => window.removeEventListener(ev, stop, true)); };
+    ['touchstart', 'wheel', 'mousedown', 'keydown'].forEach((ev) => window.addEventListener(ev, stop, { capture: true, passive: true }));
+    [0, 250, 700, 1500, 2800].forEach((ms) => setTimeout(tryScroll, ms));
+    setTimeout(stop, 3500);
+  }
+
   // ------------------------------------------------ mount
   let mounted = false, mountedScan = false;
   function mount() {
@@ -3510,13 +3718,30 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
       v.innerHTML = '<section class="card" id="sxIntro"></section><section class="card" id="sxCtl"></section><section class="card"><h2>Πρόγραμμα αγώνων</h2><div id="sxSched"></div></section><div id="sxScan"></div><div id="sxMatch"></div>';
       v.addEventListener('click', onClick); v.addEventListener('change', onChange); v.addEventListener('input', onInput);
       mounted = true;
+      sessData = loadSess();
+      if (sessData && /^\d{4}-\d\d-\d\d$/.test(sessData.day || '')) st.day = sessData.day;
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSess(); });
+      window.addEventListener('pagehide', flushSess);
+      window.addEventListener('scroll', touchSess, { passive: true });
     }
     renderIntro();
     renderControls();
-    if (!mountedScan) { mountedScan = true; restoreScan(); }
+    let fresh = false;
+    if (!mountedScan) {
+      mountedScan = true; fresh = true; restoreScan();
+      const so = sessData && sessData.scan;
+      if (so && so.open && D.hasKey()) {
+        sc.open = true; sc.view = sc.out ? (so.view === 'pm' ? 'pm' : 'res') : 'setup';
+        if (sc.view === 'setup') D.quota().then(() => { if (sc.open && sc.view === 'setup') renderScan(); }).catch(() => {});
+      }
+    }
     renderScan();
     if (st.fixtures === null && !st.loadingDay && D.hasKey()) loadDay(false); else renderSchedule();
     renderMatch();
+    if (fresh && sessData) {
+      if (restoreMatch(sessData)) renderSchedule();
+      startScrollRestore(sessData.y);
+    }
   }
   window.SimUI = { render: mount, _st: st, _cfg: cfg };
 })();
