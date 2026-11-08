@@ -136,6 +136,9 @@ dialog input[type=text], dialog input[type=password], dialog input[type=number],
 .sx-row { display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-bottom: 1px solid var(--line); cursor: pointer; border-radius: 8px; }
 .sx-row:hover, .sx-row.sel { background: var(--panel2); }
 .sx-row .sx-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-tt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sx-t2, .sx-lgn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-lgn { font-size: 11px; color: var(--muted); }
 .sx-time, .sx-fin, .sx-live { min-width: 56px; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 13px; }
 .sx-time { color: var(--muted); } .sx-live { color: var(--green); } .sx-fin { color: var(--text); }
 .sx-go { color: var(--blue); font-size: 12px; white-space: nowrap; }
@@ -2833,7 +2836,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
   const fmtDT = (ts) => new Date(ts).toLocaleString('el-GR', { timeZone: 'Europe/Athens', weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
   const ago = (ts) => { const m = Math.round((Date.now() - ts) / 60000); return m < 1 ? 'μόλις τώρα' : m < 60 ? `πριν ${m}'` : `πριν ${Math.round(m / 60)} ώρ.`; };
 
-  const cfg = Object.assign({ depth: 'deep', nSim: 20000, blendW: 30, bankroll: 449, minEdge: 4, filter: 'big' }, LS('lbd_sim', {}));
+  const cfg = Object.assign({ depth: 'deep', nSim: 20000, blendW: 30, bankroll: 449, minEdge: 4, filter: 'big', view: 'league' }, LS('lbd_sim', {}));
   const st = {
     day: athensDay(), fixtures: null, loadingDay: false, dayErr: null, q: '', fix: null, ctx: null, build: null, R: null, markets: null,
     tasks: [], busy: false, progress: 0, note: '', err: null, tab: 'tips', onlyOdds: false, runId: 0, mkOpen: {},
@@ -2883,14 +2886,26 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     const nScan = D.hasKey() && st.fixtures ? scanCandidates().length : 0;
     let h = (D.hasKey() ? `<div class="sx-btns" style="margin:0 0 10px"><button class="primary" data-sx="scanopen">🔎 Σάρωση ημέρας — βρες τα καλύτερα στοιχήματα</button>${st.fixtures ? `<span class="muted sx-small">${nScan} αγώνες δεν έχουν ξεκινήσει${sc.out && !sc.open ? ' · υπάρχει αποθηκευμένη σάρωση ' + ago(sc.at) : ''}</span>` : ''}</div>` : '') + `<div class="seg" id="sxDays">${dayChips()}</div>
       <div class="sx-row2"><input type="date" id="sxDate" value="${st.day}"><input type="search" id="sxQ" placeholder="Αναζήτηση ομάδας / λίγκας" value="${esc(st.q)}"><button data-sx="reload" title="Ανανέωση προγράμματος">⟳</button></div>
-      <div class="seg"><button class="tabbtn${cfg.filter === 'big' ? ' on' : ''}" data-sx="filter" data-f="big">Μεγάλες λίγκες</button><button class="tabbtn${cfg.filter === 'all' ? ' on' : ''}" data-sx="filter" data-f="all">Όλες</button><button class="tabbtn${cfg.filter === 'star' ? ' on' : ''}" data-sx="filter" data-f="star">★ Αγαπημένα</button></div>`;
+      <div class="seg"><button class="tabbtn${cfg.filter === 'big' ? ' on' : ''}" data-sx="filter" data-f="big">Μεγάλες λίγκες</button><button class="tabbtn${cfg.filter === 'all' ? ' on' : ''}" data-sx="filter" data-f="all">Όλες</button><button class="tabbtn${cfg.filter === 'star' ? ' on' : ''}" data-sx="filter" data-f="star">★ Αγαπημένα</button></div>
+      <div class="seg" style="margin-top:6px"><button class="tabbtn${cfg.view !== 'time' ? ' on' : ''}" data-sx="view" data-v="league">Ανά λίγκα</button><button class="tabbtn${cfg.view === 'time' ? ' on' : ''}" data-sx="view" data-v="time">Ανά ώρα</button></div>`;
     if (st.loadingDay) h += '<p class="muted">Φόρτωση προγράμματος…</p>';
     else if (st.dayErr) h += `<p class="neg">${esc(st.dayErr)}</p>`;
     else if (!arr.length) h += `<p class="muted">Δεν βρέθηκαν αγώνες ${st.fixtures && st.fixtures.length ? 'με αυτό το φίλτρο — δοκίμασε «Όλες»' : 'για αυτή την ημέρα'}.</p>`;
-    for (const g of arr) {
-      h += `<div class="sx-lg">${esc(g.l.country)} · ${esc(g.l.name)}</div>`;
-      g.items.sort((a, b) => a.ts - b.ts);
-      for (const f of g.items) h += `<div class="sx-row${st.fix && st.fix.id === f.id ? ' sel' : ''}" data-sx="pick" data-id="${f.id}">${statusOf(f)}<span class="sx-t">${esc(f.home.name)} – ${esc(f.away.name)}</span><span class="sx-go">Προσομοίωση ▶</span></div>`;
+    if (cfg.view === 'time') {
+      // one flat list in kick-off order, with a heading per kick-off time; the league moves to a small second line
+      const flat = arr.flatMap((g) => g.items).sort((x, y) => x.ts - y.ts || x.league.name.localeCompare(y.league.name));
+      let lastT = null;
+      for (const f of flat) {
+        const t = hhmm(f.ts);
+        if (t !== lastT) { h += `<div class="sx-lg">${t}</div>`; lastT = t; }
+        h += `<div class="sx-row${st.fix && st.fix.id === f.id ? ' sel' : ''}" data-sx="pick" data-id="${f.id}">${statusOf(f)}<span class="sx-tt"><span class="sx-t2">${esc(f.home.name)} – ${esc(f.away.name)}</span><span class="sx-lgn">${esc(f.league.country)} · ${esc(f.league.name)}</span></span><span class="sx-go">Προσομοίωση ▶</span></div>`;
+      }
+    } else {
+      for (const g of arr) {
+        h += `<div class="sx-lg">${esc(g.l.country)} · ${esc(g.l.name)}</div>`;
+        g.items.sort((a, b) => a.ts - b.ts);
+        for (const f of g.items) h += `<div class="sx-row${st.fix && st.fix.id === f.id ? ' sel' : ''}" data-sx="pick" data-id="${f.id}">${statusOf(f)}<span class="sx-t">${esc(f.home.name)} – ${esc(f.away.name)}</span><span class="sx-go">Προσομοίωση ▶</span></div>`;
+      }
     }
     box.innerHTML = h;
   }
@@ -3620,6 +3635,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
       scheduleScan();
     }
     else if (a === 'filter') { cfg.filter = b.dataset.f; save('lbd_sim', cfg); renderSchedule(); }
+    else if (a === 'view') { cfg.view = b.dataset.v === 'time' ? 'time' : 'league'; save('lbd_sim', cfg); renderSchedule(); }
     else if (a === 'pick') pick(Number(b.dataset.id));
     else if (a === 'tab') { st.tab = b.dataset.t; refreshTab(); touchSess(); }
     else if (a === 'savekey') saveKey();
