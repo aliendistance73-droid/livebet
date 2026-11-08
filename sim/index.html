@@ -2863,6 +2863,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     }
     return h;
   }
+  const isDone = (f) => ['FT', 'AET', 'PEN'].includes((f.status || {}).short);   // finished matches are not listed
   function statusOf(f) {
     const s = f.status || {};
     if (['NS', 'TBD'].includes(s.short)) return `<span class="sx-time">${hhmm(f.ts)}</span>`;
@@ -2873,13 +2874,14 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
   function renderSchedule() {
     const box = $('#sxSched');
     if (!box) return;
-    let list = st.fixtures || [];
+    const all = st.fixtures || [], nDone = all.filter(isDone).length;
+    let list = all.filter((f) => !isDone(f));
     const tracked = new Set(LS('lbd_tracked', []));
     const q = st.q.trim().toLowerCase();
     let big = list.filter((f) => BIG.has(f.league.id));
     if (cfg.filter === 'big') list = big.length ? big : list;
     else if (cfg.filter === 'star') list = list.filter((f) => tracked.has(f.id));
-    if (q) list = (st.fixtures || []).filter((f) => (f.home.name + ' ' + f.away.name + ' ' + f.league.name + ' ' + f.league.country).toLowerCase().includes(q));
+    if (q) list = all.filter((f) => !isDone(f) && ( (f.home.name + ' ' + f.away.name + ' ' + f.league.name + ' ' + f.league.country).toLowerCase().includes(q)));
     const groups = new Map();
     for (const f of list) { const k = f.league.id; if (!groups.has(k)) groups.set(k, { l: f.league, items: [] }); groups.get(k).items.push(f); }
     const arr = [...groups.values()].sort((a, b) => (BIG.has(b.l.id) ? 1 : 0) - (BIG.has(a.l.id) ? 1 : 0) || a.l.country.localeCompare(b.l.country) || a.l.name.localeCompare(b.l.name));
@@ -2890,7 +2892,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
       <div class="seg" style="margin-top:6px"><button class="tabbtn${cfg.view !== 'time' ? ' on' : ''}" data-sx="view" data-v="league">Ανά λίγκα</button><button class="tabbtn${cfg.view === 'time' ? ' on' : ''}" data-sx="view" data-v="time">Ανά ώρα</button></div>`;
     if (st.loadingDay) h += '<p class="muted">Φόρτωση προγράμματος…</p>';
     else if (st.dayErr) h += `<p class="neg">${esc(st.dayErr)}</p>`;
-    else if (!arr.length) h += `<p class="muted">Δεν βρέθηκαν αγώνες ${st.fixtures && st.fixtures.length ? 'με αυτό το φίλτρο — δοκίμασε «Όλες»' : 'για αυτή την ημέρα'}.</p>`;
+    else if (!arr.length) h += `<p class="muted">${all.length && nDone === all.length ? 'Όλοι οι αγώνες αυτής της ημέρας έχουν ολοκληρωθεί.' : `Δεν βρέθηκαν αγώνες ${all.length ? 'με αυτό το φίλτρο — δοκίμασε «Όλες»' : 'για αυτή την ημέρα'}.`}</p>`;
     if (cfg.view === 'time') {
       // one flat list in kick-off order, with a heading per kick-off time; the league moves to a small second line
       const flat = arr.flatMap((g) => g.items).sort((x, y) => x.ts - y.ts || x.league.name.localeCompare(y.league.name));
