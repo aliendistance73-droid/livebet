@@ -2589,8 +2589,8 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     for (const k of PM_KEYS) if (typeof by[k] === 'number' && isFinite(by[k])) pm[k] = Math.round(by[k] * 10000) / 10000;
     return pm;
   };
-  /* strength of a probability for colouring: 's' >= 70%, 'm' >= 60% */
-  SC.pmLevel = (p) => (p >= 0.70 ? 's' : p >= 0.60 ? 'm' : '');
+  /* strength of a probability for colouring: 's' (green) >= 80%, 'm' (orange) >= 60% */
+  SC.pmLevel = (p) => (p >= 0.80 ? 's' : p >= 0.60 ? 'm' : '');
   /* Rows to show for one match: [{g: group, title, items: [{t, p, key, label, lean?}]}]. The «lean» is the more likely side of a line. */
   SC.pmView = function (pm, names) {
     if (!pm || typeof pm['ft:1'] !== 'number') return null;
@@ -3452,7 +3452,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     return [scanCfg.mode === 'value' ? 'μεγαλύτερο value' : 'πιθανότερα', mp != null ? `πιθανότητα ≥ ${Math.round(mp * 100)}%` : null, `απόδοση ${Math.max(1.3, o.oMin).toFixed(2)}–${o.oMax.toFixed(2)}`, `edge ≥ ${(scanEdge() * 100).toFixed(1).replace(/\.0$/, '')}%`, scanCfg.lgOff.length ? `${scanCfg.lgOff.length} λίγκες εκτός` : null, off.length ? 'χωρίς ' + off.join(', ') : null, scanCfg.en.parlay ? null : 'χωρίς παρολί'].filter(Boolean).join(' · ');
   }
   // ------------------------------------------------ model probabilities (work with or without bookmaker odds)
-  const PM_MINS = [[0, 'Όλες'], [0.6, '≥ 60%'], [0.7, '≥ 70%']];
+  const PM_MINS = [[0, 'Όλες'], [0.6, '≥ 60%'], [0.7, '≥ 70%'], [0.8, '≥ 80%']];
   function pmChips(where) {
     const min = scanCfg.pmMin || 0;
     return `<div class="sx-chips"><span class="muted sx-small">Εμφάνιση</span>${PM_MINS.map(([v, t]) => `<button class="sx-chip${min === v ? ' on' : ''}" data-sx="pmmin" data-w="${where}" data-v="${v}">${t}</button>`).join('')}</div>`;
@@ -3471,7 +3471,7 @@ header { padding-top: max(10px, env(safe-area-inset-top, 0px)); } #viewSim[hidde
     }
     return h;
   }
-  const PM_NOTE = '<p class="note">Οι πιθανότητες είναι του μοντέλου (προσομοίωση + μίξη με την αγορά), όχι αποδόσεις bookmaker. Κάτω από κάθε ποσοστό φαίνεται η <b>δίκαιη απόδοση</b> (1 ÷ πιθανότητα): στοιχηματίζεις με αξία μόνο αν η τιμή του bookmaker είναι πάνω από αυτήν. Με έντονο χρώμα η πιθανότερη πλευρά κάθε γραμμής (πράσινο ≥ 70%, κίτρινο ≥ 60%).</p>';
+  const PM_NOTE = '<p class="note">Οι πιθανότητες είναι του μοντέλου (προσομοίωση + μίξη με την αγορά), όχι αποδόσεις bookmaker. Κάτω από κάθε ποσοστό φαίνεται η <b>δίκαιη απόδοση</b> (1 ÷ πιθανότητα): στοιχηματίζεις με αξία μόνο αν η τιμή του bookmaker είναι πάνω από αυτήν. Με έντονο χρώμα η πιθανότερη πλευρά κάθε γραμμής (πράσινο ≥ 80%, πορτοκαλί 60–79%).</p>';
   function pmMatchHtml(r, min) {
     const names = { h: r.fix.home.name, a: r.fix.away.name }, s = r.sum;
     const rows = window.SimScan.pmView(s && s.pm, names);
